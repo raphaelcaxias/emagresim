@@ -1,4 +1,4 @@
-# avatar_maker.py - Avatar interativo que dança e fica triste
+# avatar_maker.py - Avatar interativo CORRIGIDO
 import streamlit as st
 import random
 import time
@@ -21,19 +21,19 @@ def gerar_avatar_svg(avatar_data, humor="normal"):
     emoji = avatar_data["emoji"]
     cor = avatar_data["cor"]
     
-    # Expressões baseadas no humor
+    # Expressões baseadas no humor (todas as variáveis definidas)
     if humor == "feliz":
         boca = 'M 80 115 Q 100 140 120 115'
         olhos = 'M 70 85 Q 75 80 80 85 M 120 85 Q 125 80 130 85'
-        sobrancelha = 'M 65 75 Q 75 70 85 75 M 135 75 Q 125 70 115 75'
+        sombrancelha = 'M 65 75 Q 75 70 85 75 M 135 75 Q 125 70 115 75'
     elif humor == "triste":
         boca = 'M 85 120 Q 100 110 115 120'
         olhos = 'M 70 85 Q 75 90 80 85 M 120 85 Q 125 90 130 85'
-        sobrancelha = 'M 65 80 Q 75 85 85 80 M 135 80 Q 125 85 115 80'
+        sombrancelha = 'M 65 80 Q 75 85 85 80 M 135 80 Q 125 85 115 80'
     else:  # normal
         boca = 'M 80 115 Q 100 125 120 115'
         olhos = 'M 70 85 Q 75 85 80 85 M 120 85 Q 125 85 130 85'
-        sobrancelha = 'M 65 75 Q 75 75 85 75 M 135 75 Q 125 75 115 75'
+        sombrancelha = 'M 65 75 Q 75 75 85 75 M 135 75 Q 125 75 115 75'
     
     svg = f'''<svg width="200" height="200" viewBox="0 0 200 200" xmlns="http://www.w3.org/2000/svg">
         <rect width="200" height="200" rx="30" fill="#1A1A1A"/>
@@ -112,26 +112,6 @@ def tela_avatar():
             st.session_state["pagina"] = "criar_conta"
             st.rerun()
 
-def atualizar_humor_avatar(humor):
-    """Atualiza o humor do avatar (chamado quando o usuário atinge meta ou pede apoio)"""
-    if "avatar_data" in st.session_state:
-        st.session_state["avatar_humor"] = humor
-
-def celebrar_meta():
-    """Avatar dança quando meta é atingida"""
-    atualizar_humor_avatar("feliz")
-    st.balloons()
-    st.toast("🎉 PARABÉNS! Você atingiu sua meta! 🎉", icon="🏆")
-    time.sleep(3)
-    atualizar_humor_avatar("normal")
-
-def modo_apoio():
-    """Avatar fica triste quando usuário precisa de apoio"""
-    atualizar_humor_avatar("triste")
-    st.toast("💙 Você não está sozinho. Um dia de cada vez.", icon="🤗")
-    time.sleep(3)
-    atualizar_humor_avatar("normal")
-
 def mostrar_avatar():
     """Mostra o avatar com o humor atual"""
     if "avatar_data" in st.session_state:
@@ -141,3 +121,22 @@ def mostrar_avatar():
         st.markdown(f'<div style="display: flex; justify-content: center;">{svg}</div>', unsafe_allow_html=True)
     else:
         st.markdown('<div style="font-size: 3rem; text-align: center;">🔥</div>', unsafe_allow_html=True)
+
+def celebrar_meta():
+    """Avatar dança quando meta é atingida"""
+    if "avatar_data" in st.session_state:
+        st.session_state["avatar_humor"] = "feliz"
+        st.balloons()
+        st.toast("🎉 PARABÉNS! Você atingiu sua meta! 🎉", icon="🏆")
+        time.sleep(2)
+        st.session_state["avatar_humor"] = "normal"
+        st.rerun()
+
+def modo_apoio():
+    """Avatar fica triste quando usuário precisa de apoio"""
+    if "avatar_data" in st.session_state:
+        st.session_state["avatar_humor"] = "triste"
+        st.toast("💙 Você não está sozinho. Um dia de cada vez.", icon="🤗")
+        time.sleep(2)
+        st.session_state["avatar_humor"] = "normal"
+        st.rerun()
