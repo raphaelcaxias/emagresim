@@ -1,7 +1,50 @@
-# app.py - VERSÃO COMPLETA SEM AVATAR_MAKER
+# app.py - EmagreSim v13.0 COMPLETO
 import streamlit as st
 import random
 from datetime import datetime
+
+# -----------------------------------------------------------------------------
+# TENTAR IMPORTAR AVATAR (COM FALLBACK)
+# -----------------------------------------------------------------------------
+try:
+    from avatar_maker import tela_avatar
+    AVATAR_DISPONIVEL = True
+except ImportError:
+    AVATAR_DISPONIVEL = False
+    # Fallback: função simples de avatar
+    def tela_avatar():
+        st.markdown("<h1 style='text-align:center;'>🎨 Crie seu Avatar</h1>", unsafe_allow_html=True)
+        
+        col1, col2 = st.columns([1, 1])
+        with col1:
+            estilo = st.selectbox("Estilo", ["🔥 Fogo", "💪 Forte", "🧘 Calmo", "🏃 Veloz", "😊 Feliz"])
+            cor = st.color_picker("Cor principal", "#FF4D00")
+            if st.button("🎲 Criar aleatório", use_container_width=True):
+                estilos = ["🔥 Fogo", "💪 Forte", "🧘 Calmo", "🏃 Veloz", "😊 Feliz"]
+                estilo = random.choice(estilos)
+                cor = random.choice(["#FF4D00", "#22C55E", "#3B82F6", "#8B5CF6"])
+                st.rerun()
+        with col2:
+            emoji = estilo[0]
+            svg = f'''<svg width="200" height="200" viewBox="0 0 200 200" xmlns="http://www.w3.org/2000/svg">
+                <rect width="200" height="200" rx="20" fill="#1A1A1A"/>
+                <circle cx="100" cy="95" r="60" fill="{cor}" stroke="white" stroke-width="3"/>
+                <circle cx="75" cy="85" r="8" fill="white"/>
+                <circle cx="125" cy="85" r="8" fill="white"/>
+                <circle cx="77" cy="85" r="4" fill="black"/>
+                <circle cx="127" cy="85" r="4" fill="black"/>
+                <path d="M 80 115 Q 100 130 120 115" stroke="white" stroke-width="3" fill="none" stroke-linecap="round"/>
+                <text x="100" y="175" text-anchor="middle" font-size="40" fill="white">{emoji}</text>
+            </svg>'''
+            st.markdown(f'<div style="display: flex; justify-content: center;">{svg}</div>', unsafe_allow_html=True)
+            st.download_button("⬇️ Baixar Avatar", svg, "meu_avatar.svg", "image/svg+xml", use_container_width=True)
+        
+        st.markdown("---")
+        if st.button("✅ Salvar Avatar e Continuar", use_container_width=True):
+            st.session_state["avatar_svg"] = svg
+            st.session_state["avatar_estilo"] = estilo
+            st.session_state["pagina"] = "criar_conta"
+            st.rerun()
 
 # Configuração da página
 st.set_page_config(
@@ -31,50 +74,6 @@ def mensagem_bom_dia():
     elif hora < 18:
         return "🌤️ Boa tarde! Continue firme."
     return "🌙 Boa noite! Amanhã é outro dia."
-
-# -----------------------------------------------------------------------------
-# PÁGINA AVATAR (SIMPLES, SEM ARQUIVO EXTERNO)
-# -----------------------------------------------------------------------------
-def tela_avatar():
-    st.markdown("<h1 style='text-align:center;'>🎨 Crie seu Avatar</h1>", unsafe_allow_html=True)
-    
-    col1, col2 = st.columns([1, 1])
-    
-    with col1:
-        genero = st.selectbox("Gênero", ["Masculino", "Feminino"])
-        estilo = st.selectbox("Estilo", ["🔥 Energético", "💪 Forte", "🧘 Calmo", "🏃 Veloz", "😊 Feliz", "🤔 Pensativo"])
-        cor_principal = st.color_picker("Cor principal", "#FF4D00")
-        cor_fundo = st.color_picker("Cor de fundo", "#1A1A1A")
-        
-        if st.button("🎲 Criar aleatório", use_container_width=True):
-            estilos = ["🔥 Energético", "💪 Forte", "🧘 Calmo", "🏃 Veloz", "😊 Feliz", "🤔 Pensativo"]
-            estilo = random.choice(estilos)
-            cor_principal = random.choice(["#FF4D00", "#22C55E", "#3B82F6", "#8B5CF6", "#F59E0B", "#EF4444"])
-            st.rerun()
-    
-    with col2:
-        # Avatar SVG simples
-        emoji = estilo[0]
-        svg = f'''<svg width="200" height="200" viewBox="0 0 200 200" xmlns="http://www.w3.org/2000/svg">
-            <rect width="200" height="200" rx="20" fill="{cor_fundo}"/>
-            <circle cx="100" cy="95" r="60" fill="{cor_principal}" stroke="white" stroke-width="3"/>
-            <circle cx="75" cy="85" r="8" fill="white"/>
-            <circle cx="125" cy="85" r="8" fill="white"/>
-            <circle cx="77" cy="85" r="4" fill="black"/>
-            <circle cx="127" cy="85" r="4" fill="black"/>
-            <path d="M 80 115 Q 100 130 120 115" stroke="white" stroke-width="3" fill="none" stroke-linecap="round"/>
-            <text x="100" y="175" text-anchor="middle" font-size="40" fill="white">{emoji}</text>
-        </svg>'''
-        st.markdown(f'<div style="display: flex; justify-content: center;">{svg}</div>', unsafe_allow_html=True)
-        
-        st.download_button("⬇️ Baixar Avatar (SVG)", svg, "meu_avatar.svg", "image/svg+xml", use_container_width=True)
-    
-    st.markdown("---")
-    if st.button("✅ Salvar Avatar e Continuar", use_container_width=True):
-        st.session_state["avatar_svg"] = svg
-        st.session_state["avatar_estilo"] = estilo
-        st.session_state["pagina"] = "criar_conta"
-        st.rerun()
 
 # -----------------------------------------------------------------------------
 # PÁGINA LOGIN
@@ -121,7 +120,6 @@ def pagina_login():
 def pagina_criar_conta():
     st.markdown("<h1 style='text-align:center;'>🔥 Criar Conta</h1>", unsafe_allow_html=True)
     
-    # Mostrar avatar se já foi criado
     if "avatar_svg" in st.session_state:
         col1, col2 = st.columns([1, 2])
         with col1:
@@ -179,8 +177,16 @@ def pagina_dashboard():
             st.rerun()
         return
     
-    st.markdown(f"<h1>Olá, {usuario['nome']}!</h1>", unsafe_allow_html=True)
-    st.markdown(f"<p>{mensagem_bom_dia()}</p>", unsafe_allow_html=True)
+    # Cabeçalho com avatar
+    col_avatar, col_titulo = st.columns([1, 4])
+    with col_avatar:
+        if usuario.get("avatar") and usuario["avatar"].startswith("<svg"):
+            st.markdown(f'<div style="display: flex; justify-content: center;">{usuario["avatar"]}</div>', unsafe_allow_html=True)
+        else:
+            st.markdown(f'<div style="font-size: 3rem; text-align: center;">{usuario.get("avatar", "🔥")}</div>', unsafe_allow_html=True)
+    with col_titulo:
+        st.markdown(f"<h1>Olá, {usuario['nome']}!</h1>", unsafe_allow_html=True)
+        st.markdown(f"<p>{mensagem_bom_dia()}</p>", unsafe_allow_html=True)
     
     # KPIs
     col1, col2, col3, col4 = st.columns(4)
@@ -201,7 +207,14 @@ def pagina_dashboard():
     
     # Desafio da semana
     with st.expander("🏆 Desafio da Semana", expanded=True):
-        st.markdown("💧 **Hidratação** – Beba 2L de água por 5 dias ⚡ +100 XP")
+        desafios = [
+            "💧 Beba 2L de água por 5 dias",
+            "🥚 Registre proteína em todas as refeições",
+            "🚶 Caminhe 30min por dia durante 4 dias",
+            "😴 Durma 7h+ por 5 dias"
+        ]
+        desafio = random.choice(desafios)
+        st.markdown(f"**{desafio}** ⚡ +100 XP")
         st.progress(0.3, text="Progresso: 2/5 dias")
     
     # Botão sair
