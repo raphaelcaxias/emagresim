@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 """
-EmagreSim v5.0 - Behavioral Health OS
-Arquivo unico (app6.py) com imagens carregadas do GitHub.
+EmagreSim v5.1 - Behavioral Health OS
+Corrigido: erro de cache com imagens PIL
 """
 
 import streamlit as st
@@ -16,7 +16,6 @@ from contextlib import contextmanager
 from dataclasses import dataclass
 from typing import List, Dict, Optional, Tuple
 from scipy import stats
-from sklearn.linear_model import LogisticRegression
 import plotly.graph_objects as go
 import plotly.express as px
 import requests
@@ -42,11 +41,10 @@ st.set_page_config(
 )
 
 # -----------------------------------------------------------------------------
-# 2. CARREGAMENTO DAS IMAGENS DO GITHUB
+# 2. CARREGAMENTO DAS IMAGENS DO GITHUB (SEM CACHE PARA EVITAR ERRO)
 # -----------------------------------------------------------------------------
-@st.cache_data(ttl=3600)
 def load_image_from_url(url: str) -> Optional[Image.Image]:
-    """Carrega uma imagem a partir de um URL raw do GitHub."""
+    """Carrega uma imagem a partir de um URL raw do GitHub. Sem cache."""
     try:
         response = requests.get(url, timeout=10)
         if response.status_code == 200:
@@ -55,11 +53,12 @@ def load_image_from_url(url: str) -> Optional[Image.Image]:
         logger.warning(f"Erro ao carregar imagem {url}: {e}")
     return None
 
-# URLs raw das imagens (use estas nos links)
+# URLs raw das imagens
 LOGO_URL = "https://raw.githubusercontent.com/raphaelcaxias/emagresim/main/logo.png"
 ICON_URL = "https://raw.githubusercontent.com/raphaelcaxias/emagresim/main/icon.png"
 SPLASH_URL = "https://raw.githubusercontent.com/raphaelcaxias/emagresim/main/splash.png"
 
+# Carrega as imagens (sem cache)
 logo_img = load_image_from_url(LOGO_URL)
 icon_img = load_image_from_url(ICON_URL)
 splash_img = load_image_from_url(SPLASH_URL)
@@ -161,7 +160,7 @@ div[data-testid="stMetric"] label {{ color: {C.MUTED} !important; font-size: .7r
 st.markdown(CUSTOM_CSS, unsafe_allow_html=True)
 
 # -----------------------------------------------------------------------------
-# 4. SPLASH SCREEN (opcional)
+# 4. SPLASH SCREEN (opcional, sem cache)
 # -----------------------------------------------------------------------------
 if splash_img and "splash_shown" not in st.session_state:
     with st.container():
@@ -273,7 +272,7 @@ def seed_if_empty():
         conn.execute("INSERT INTO xp_logs(user_id,amount,source) VALUES(1,500,'seed')")
 
 # -----------------------------------------------------------------------------
-# 6. DATA ACCESS (com cache)
+# 6. DATA ACCESS (com cache apenas para dados, não para imagens)
 # -----------------------------------------------------------------------------
 @st.cache_data(ttl=CACHE_TTL)
 def load_all(uid: int = USER_ID) -> Tuple[Dict, pd.DataFrame, pd.DataFrame]:
