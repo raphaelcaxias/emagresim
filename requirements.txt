@@ -2,4 +2,4 @@ streamlit
 supabase
 plotly
 pandas
-bcrypt
+streamlit-confetti
