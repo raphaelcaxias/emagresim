@@ -3,3 +3,4 @@ supabase
 plotly
 pandas
 streamlit-confetti
+Avatar_Maker_Streamlit
