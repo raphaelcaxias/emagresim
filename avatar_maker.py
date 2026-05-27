@@ -1,10 +1,10 @@
 # avatar_maker.py
 import streamlit as st
 import random
-from styles import get_tema
 
 def gerar_avatar_svg(estilo="masculino1", pele="#F5C9A0", cabelo="#5C3A21", 
                      olhos="#2C2C2C", boca="#E8A0A0", roupa="#FF4D00"):
+    
     if estilo == "masculino1":
         formato_rosto = 'rx="45" ry="45"'
         sombrancelha = 'M 65 35 L 75 32 M 135 35 L 125 32'
@@ -39,8 +39,7 @@ def gerar_avatar_svg(estilo="masculino1", pele="#F5C9A0", cabelo="#5C3A21",
     return svg
 
 def tela_avatar():
-    C = get_tema()
-    st.markdown("<h1 style='text-align:center;'>?? Crie seu Avatar</h1>", unsafe_allow_html=True)
+    st.markdown("<h1 style='text-align:center;'>🎨 Crie seu Avatar</h1>", unsafe_allow_html=True)
     
     col1, col2 = st.columns([1, 1])
     
@@ -52,7 +51,7 @@ def tela_avatar():
         boca = st.color_picker("Boca", "#E8A0A0")
         roupa = st.color_picker("Roupa", "#FF4D00")
         
-        if st.button("?? Criar aleat�rio", use_container_width=True):
+        if st.button("🎲 Criar aleatório", use_container_width=True):
             estilos = ["masculino1", "masculino2", "feminino1", "feminino2"]
             estilo = random.choice(estilos)
             pele = random.choice(["#F5C9A0", "#F0B88A", "#E8A070", "#D4A574"])
@@ -64,11 +63,11 @@ def tela_avatar():
         avatar_svg = gerar_avatar_svg(estilo, pele, cabelo, olhos, boca, roupa)
         st.markdown(f'<div style="display: flex; justify-content: center;">{avatar_svg}</div>', unsafe_allow_html=True)
         
-        st.download_button("?? Baixar Avatar (SVG)", avatar_svg, "meu_avatar.svg", "image/svg+xml", use_container_width=True)
+        st.download_button("⬇️ Baixar Avatar (SVG)", avatar_svg, "meu_avatar.svg", "image/svg+xml", use_container_width=True)
     
     st.markdown("---")
-    if st.button("? Salvar Avatar e Continuar", use_container_width=True):
+    if st.button("✅ Salvar Avatar e Continuar", use_container_width=True):
         st.session_state["avatar_svg"] = avatar_svg
         st.session_state["avatar_estilo"] = estilo
-        st.query_params["pagina"] = "criar_conta"
+        st.session_state["pagina"] = "criar_conta"
         st.rerun()
