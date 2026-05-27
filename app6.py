@@ -1,7 +1,8 @@
 # -*- coding: utf-8 -*-
 """
-EmagreSim v7.0 - Behavioral Health OS (Modern Edition)
-Sem imagens externas | Cores quentes | Glassmorphism | Animações
+EmagreSim v7.1 - Behavioral Health OS (Laranja Flame Edition)
+Cores: Laranja flamejante (#FF4D00) | Dark premium
+Todos os erros corrigidos.
 """
 
 import streamlit as st
@@ -31,44 +32,43 @@ logging.basicConfig(level=logging.INFO, format="%(asctime)s | %(levelname)-8s | 
 logger = logging.getLogger("emagresim")
 
 st.set_page_config(
-    page_title="EmagreSim | Modern OS",
+    page_title="EmagreSim | Transformação",
     page_icon="🔥",
     layout="wide",
     initial_sidebar_state="expanded",
 )
 
 # -----------------------------------------------------------------------------
-# 2. CORES (Paleta quente)
+# 2. CORES (Paleta Laranja Flame - Premium Dark)
 # -----------------------------------------------------------------------------
 @dataclass
 class C:
-    BG: str = "#1a0f0a"
-    SURFACE: str = "#2d1f18"
-    CARD_BG: str = "rgba(255,245,235,0.06)"
-    CARD_BORDER: str = "rgba(255,245,235,0.12)"
-    CARD_BORDER_HOVER: str = "rgba(255,140,66,0.4)"
-    PRIMARY: str = "#FF8C42"
-    SECONDARY: str = "#E67E22"
-    ACCENT: str = "#FF6B6B"
-    TEXT: str = "#FFF5EE"
-    MUTED: str = "#D4A574"
-    DANGER: str = "#FF6B6B"
+    PRIMARY: str = "#FF4D00"        # Laranja flamejante
+    PRIMARY_DARK: str = "#E63E00"   # Laranja escuro (hover)
+    PRIMARY_LIGHT: str = "#FF8A4D"  # Laranja claro (gradientes)
+    BG: str = "#12100B"             # Marrom quase preto
+    SURFACE: str = "#1F1B16"        # Marrom escuro (cards, sidebar)
+    SURFACE_LIGHT: str = "#2A241E"  # Marrom médio (inputs)
+    TEXT: str = "#F5F0E6"           # Bege claro
+    TEXT_MUTED: str = "#B8A88F"     # Bege médio
+    SUCCESS: str = "#22C55E"        # Verde
+    WARNING: str = "#FBBF24"        # Amarelo
+    DANGER: str = "#EF4444"         # Vermelho
 
 # -----------------------------------------------------------------------------
-# 3. CSS MODERNO
+# 3. CSS MODERNO (Laranja Flame)
 # -----------------------------------------------------------------------------
 CUSTOM_CSS = f"""
 <style>
 @import url('https://fonts.googleapis.com/css2?family=Inter:opsz,wght@14..32,300;400;500;600;700;800&display=swap');
 
 .stApp, .stApp > header {{
-    background: linear-gradient(135deg, {C.BG} 0%, {C.SURFACE} 100%) !important;
+    background: {C.BG} !important;
 }}
 
 section[data-testid="stSidebar"] {{
-    background: rgba(45,31,24,0.7) !important;
-    backdrop-filter: blur(12px);
-    border-right: 1px solid {C.CARD_BORDER};
+    background: {C.SURFACE} !important;
+    border-right: 1px solid rgba(255,255,255,0.05);
 }}
 
 * {{
@@ -78,27 +78,27 @@ section[data-testid="stSidebar"] {{
 h1, h2, h3, h4 {{
     font-weight: 800 !important;
     letter-spacing: -0.02em;
-    background: linear-gradient(135deg, {C.PRIMARY}, {C.ACCENT});
-    background-clip: text;
-    -webkit-background-clip: text;
-    -webkit-text-fill-color: transparent;
+    color: {C.TEXT} !important;
+    background: none !important;
+    -webkit-text-fill-color: {C.TEXT} !important;
 }}
 
+/* Cards */
 .es-card, .es-card-flat {{
-    background: {C.CARD_BG};
-    backdrop-filter: blur(10px);
-    border: 1px solid {C.CARD_BORDER};
-    border-radius: 24px;
+    background: {C.SURFACE};
+    border: 1px solid rgba(255,255,255,0.06);
+    border-radius: 20px;
     padding: 20px 24px;
     margin-bottom: 16px;
-    transition: all 0.3s cubic-bezier(0.2, 0.9, 0.4, 1.1);
+    transition: all 0.3s ease;
 }}
 
 .es-card:hover {{
-    border-color: {C.CARD_BORDER_HOVER};
-    transform: translateY(-4px) scale(1.01);
+    border-color: {C.PRIMARY};
+    transform: translateY(-3px);
 }}
 
+/* KPIs */
 .kpi-wrap {{
     display: flex;
     flex-direction: column;
@@ -109,26 +109,27 @@ h1, h2, h3, h4 {{
     font-size: 0.7rem;
     font-weight: 700;
     text-transform: uppercase;
-    letter-spacing: 0.12em;
-    color: {C.MUTED};
+    letter-spacing: 0.1em;
+    color: {C.TEXT_MUTED};
 }}
 
 .kpi-value {{
-    font-size: 2.2rem;
+    font-size: 2rem;
     font-weight: 800;
     line-height: 1.1;
 }}
 
 .kpi-sub {{
     font-size: 0.7rem;
-    color: {C.MUTED};
+    color: {C.TEXT_MUTED};
     margin-top: 4px;
 }}
 
 .c-primary {{ color: {C.PRIMARY}; }}
-.c-secondary {{ color: {C.SECONDARY}; }}
-.c-accent {{ color: {C.ACCENT}; }}
+.c-success {{ color: {C.SUCCESS}; }}
+.c-muted {{ color: {C.TEXT_MUTED}; }}
 
+/* Progress Bar */
 .prog-track {{
     background: rgba(255,255,255,0.08);
     border-radius: 99px;
@@ -141,39 +142,61 @@ h1, h2, h3, h4 {{
     height: 100%;
     border-radius: 99px;
     transition: width 0.6s ease;
-    background: linear-gradient(90deg, {C.PRIMARY}, {C.ACCENT});
+    background: linear-gradient(90deg, {C.PRIMARY}, {C.PRIMARY_LIGHT});
 }}
 
+/* Insight Box */
 .insight-box {{
     padding: 12px 16px;
     border-radius: 16px;
     margin: 8px 0;
     font-size: 0.85rem;
-    background: rgba(255,140,66,0.08);
+    background: rgba(255,77,0,0.08);
     border-left: 3px solid {C.PRIMARY};
+    color: {C.TEXT};
 }}
 
+/* Botões */
 .stButton > button {{
     border-radius: 40px !important;
-    font-weight: 600 !important;
+    font-weight: 700 !important;
     background: {C.PRIMARY} !important;
-    color: {C.BG} !important;
+    color: {C.TEXT} !important;
     border: none !important;
     transition: all 0.2s !important;
 }}
 
 .stButton > button:hover {{
+    background: {C.PRIMARY_DARK} !important;
     transform: translateY(-2px);
-    filter: brightness(1.05);
 }}
 
+/* Formulários */
+.stTextInput > div > div > input,
+.stNumberInput > div > div > input,
+.stSelectbox > div > div,
+.stTextArea > div > textarea {{
+    background: {C.SURFACE_LIGHT} !important;
+    color: {C.TEXT} !important;
+    border: 1px solid rgba(255,255,255,0.1) !important;
+    border-radius: 12px !important;
+}}
+
+/* Métricas */
 div[data-testid="stMetric"] label {{
-    color: {C.MUTED} !important;
+    color: {C.TEXT_MUTED} !important;
     font-size: 0.7rem !important;
 }}
 
+div[data-testid="stMetric"] div[data-testid="stMetricValue"] {{
+    color: {C.PRIMARY} !important;
+    font-weight: 800 !important;
+}}
+
+/* Esconder elementos padrão */
 #MainMenu, header, footer, .stDeployButton {{ display: none; }}
 
+/* Responsivo */
 @media (max-width: 768px) {{
     .es-card, .es-card-flat {{ padding: 16px; }}
     .kpi-value {{ font-size: 1.5rem; }}
@@ -183,22 +206,22 @@ div[data-testid="stMetric"] label {{
 st.markdown(CUSTOM_CSS, unsafe_allow_html=True)
 
 # -----------------------------------------------------------------------------
-# 4. SPLASH (sem imagem externa)
+# 4. SPLASH (com animação)
 # -----------------------------------------------------------------------------
 if "splash_shown" not in st.session_state:
     with st.container():
-        st.markdown("""
+        st.markdown(f"""
         <div style="height:100vh; display:flex; flex-direction:column; align-items:center; justify-content:center;">
             <div style="font-size:5rem; animation: pulse 1.5s infinite;">🔥</div>
-            <h1 style="font-size:2.5rem; margin-top:1rem;">Emagre<span style="color:#FF8C42;">Sim</span></h1>
-            <p style="color:#D4A574; margin-top:0.5rem;">Behavioral Health OS</p>
+            <h1 style="font-size:2.5rem; margin-top:1rem; color:{C.TEXT};">Emagre<span style="color:{C.PRIMARY};">Sim</span></h1>
+            <p style="color:{C.TEXT_MUTED}; margin-top:0.5rem;">Behavioral Health OS</p>
         </div>
         <style>
-        @keyframes pulse {
-            0% { transform: scale(1); opacity: 0.7; }
-            50% { transform: scale(1.05); opacity: 1; }
-            100% { transform: scale(1); opacity: 0.7; }
-        }
+        @keyframes pulse {{
+            0% {{ transform: scale(1); opacity: 0.7; }}
+            50% {{ transform: scale(1.05); opacity: 1; }}
+            100% {{ transform: scale(1); opacity: 0.7; }}
+        }}
         </style>
         """, unsafe_allow_html=True)
         st.session_state["splash_shown"] = True
@@ -342,8 +365,10 @@ class AnalyticsEngine:
     def streak(scores: List[float], threshold: int = 70) -> int:
         s = 0
         for sc in reversed(scores):
-            if sc >= threshold: s += 1
-            else: break
+            if sc >= threshold:
+                s += 1
+            else:
+                break
         return s
 
 class LevelEngine:
@@ -459,8 +484,8 @@ def insight(text: str) -> str:
     return f'<div class="insight-box">💡 {text}</div>'
 
 def section_header(title: str, subtitle: str = ""):
-    sub = f'<p style="color:{C.MUTED};font-size:0.85rem;">{subtitle}</p>' if subtitle else ""
-    st.markdown(f"<h2>{title}</h2>{sub}<hr style='border:none;border-top:1px solid {C.CARD_BORDER};margin:12px 0 20px 0;'>", unsafe_allow_html=True)
+    sub = f'<p style="color:{C.TEXT_MUTED};font-size:0.85rem;">{subtitle}</p>' if subtitle else ""
+    st.markdown(f"<h2>{title}</h2>{sub}<hr style='border:none;border-top:1px solid rgba(255,255,255,0.06);margin:12px 0 20px 0;'>", unsafe_allow_html=True)
 
 # -----------------------------------------------------------------------------
 # 9. PAGES
@@ -474,8 +499,8 @@ def page_dashboard(user, weights, checkins, scores, xp):
     
     col1, col2, col3, col4 = st.columns(4)
     with col1: st.markdown(card(kpi("ADHERENCE", f"{scores['adherence']:.0f}", "c-primary", f"Streak {streak}d")), unsafe_allow_html=True)
-    with col2: st.markdown(card(kpi("PESO", f"{cur_w:.1f}kg", "c-secondary")), unsafe_allow_html=True)
-    with col3: st.markdown(card(kpi("DISCIPLINA", f"{scores['discipline']:.0f}", "c-accent")), unsafe_allow_html=True)
+    with col2: st.markdown(card(kpi("PESO", f"{cur_w:.1f}kg", "c-primary")), unsafe_allow_html=True)
+    with col3: st.markdown(card(kpi("DISCIPLINA", f"{scores['discipline']:.0f}", "c-primary")), unsafe_allow_html=True)
     with col4: st.markdown(card(kpi("RECUPERAÇÃO", f"{scores['recovery']:.0f}", "c-primary")), unsafe_allow_html=True)
     
     st.markdown(card(kpi("NÍVEL", lvl_name, "c-primary", f"{xp} XP") + progress_bar(lvl_pct)), unsafe_allow_html=True)
@@ -498,7 +523,9 @@ def page_register(uid: int, user: Dict):
                 workout = st.number_input("Treino (min)", 0, 300, 0, 5, help="Meta: 30 min")
                 mood = st.slider("Humor (1-10)", 1, 10, 7)
                 emotion = st.selectbox("Estado emocional", ["Focado", "Motivado", "Determinado", "Cansado", "Ansioso"])
-            if st.form_submit_button("🔥 Salvar Check-in"):
+            
+            submitted = st.form_submit_button("🔥 Salvar Check-in", use_container_width=True)
+            if submitted:
                 with st.spinner("Salvando..."):
                     cal_score = max(0, 100 - abs(cal - 1800) / 18)
                     water_score = min(water / 35, 100)
@@ -528,17 +555,23 @@ def page_register(uid: int, user: Dict):
     with tab2:
         with st.form("form_weight"):
             col1, col2, col3 = st.columns(3)
-            with col1: w = st.number_input("Peso (kg)", 30, 300, float(user["current_weight"]), 0.1)
-            with col2: bf = st.number_input("Gordura (%)", 3, 60, 20, 0.1)
-            with col3: lm = st.number_input("Massa magra (kg)", 20, 120, 35, 0.1)
-            if st.form_submit_button("🔥 Salvar Peso"):
-                data = {"date": date.today().isoformat(), "weight": w, "body_fat": bf, "lean_mass": lm}
-                xp = save_weight(uid, data)
-                if xp:
-                    st.toast(f"⚖️ Peso salvo! +{xp} XP", icon="🔥")
-                else:
-                    st.toast("✏️ Peso atualizado!", icon="⚖️")
-                st.rerun()
+            with col1:
+                w = st.number_input("Peso (kg)", 30.0, 300.0, float(user["current_weight"]), 0.1, help="Range: 30-300 kg")
+            with col2:
+                bf = st.number_input("Gordura (%)", 3.0, 60.0, 20.0, 0.1, help="Range: 3-60%")
+            with col3:
+                lm = st.number_input("Massa magra (kg)", 20.0, 120.0, 35.0, 0.1, help="Range: 20-120 kg")
+            
+            submitted = st.form_submit_button("🔥 Salvar Peso", use_container_width=True)
+            if submitted:
+                with st.spinner("Salvando..."):
+                    data = {"date": date.today().isoformat(), "weight": w, "body_fat": bf, "lean_mass": lm}
+                    xp = save_weight(uid, data)
+                    if xp:
+                        st.toast(f"⚖️ Peso salvo! +{xp} XP", icon="🔥")
+                    else:
+                        st.toast("✏️ Peso atualizado!", icon="⚖️")
+                    st.rerun()
 
 def page_profile(uid: int, user: Dict):
     section_header("Perfil", "Edite seus dados pessoais")
@@ -550,26 +583,32 @@ def page_profile(uid: int, user: Dict):
             sex = st.selectbox("Sexo", ["M", "F"], index=0 if user["sex"] == "M" else 1)
         with col2:
             height = st.number_input("Altura (m)", 1.40, 2.20, float(user["height"]), 0.01)
-            target = st.number_input("Meta de peso (kg)", 30, 200, float(user["target_weight"]), 0.5)
+            target = st.number_input("Meta de peso (kg)", 30.0, 200.0, float(user["target_weight"]), 0.5)
             acts = ["sedentario", "leve", "moderado", "intenso", "extremo"]
             act = st.selectbox("Nível de atividade", acts, index=acts.index(user["activity_level"]) if user["activity_level"] in acts else 2)
-        if st.form_submit_button("💾 Salvar Alterações"):
+        
+        submitted = st.form_submit_button("💾 Salvar Alterações", use_container_width=True)
+        if submitted:
             update_profile(uid, {"name": name, "age": age, "sex": sex, "height": height, "target_weight": target, "activity_level": act})
             st.toast("Perfil atualizado!", icon="👤")
             st.rerun()
 
 def page_config(uid: int):
     section_header("Configurações", "Exportar dados e opções do sistema")
+    
     if st.button("📥 Gerar CSVs"):
         with st.spinner("Preparando..."):
             ch = load_checkins(uid)
             wt = load_weights(uid)
             st.download_button("Check-ins.csv", ch.to_csv(index=False), "checkins.csv", "text/csv")
             st.download_button("Pesos.csv", wt.to_csv(index=False), "weights.csv", "text/csv")
+    
     st.markdown("---")
     st.markdown("### ⚠️ Zona de Perigo")
+    
     if "confirm_reset" not in st.session_state:
         st.session_state.confirm_reset = False
+    
     if not st.session_state.confirm_reset:
         if st.button("🗑️ Resetar todos os dados", type="secondary"):
             st.session_state.confirm_reset = True
@@ -579,10 +618,11 @@ def page_config(uid: int):
         col1, col2 = st.columns(2)
         with col1:
             if st.button("✅ Sim, resetar"):
-                reset_all(uid)
-                st.session_state.confirm_reset = False
-                st.toast("Dados resetados!", icon="🔄")
-                st.rerun()
+                with st.spinner("Resetando..."):
+                    reset_all(uid)
+                    st.session_state.confirm_reset = False
+                    st.toast("Dados resetados!", icon="🔄")
+                    st.rerun()
         with col2:
             if st.button("❌ Cancelar"):
                 st.session_state.confirm_reset = False
@@ -602,17 +642,17 @@ def page_telemetry(uid: int):
 def render_sidebar(user: Dict, xp: int) -> str:
     lvl_name, _, lvl_pct = LevelEngine.info(xp)
     with st.sidebar:
-        st.markdown("""
+        st.markdown(f"""
         <div style="display:flex; align-items:center; gap:10px; margin-bottom:20px;">
             <div style="font-size:2rem;">🔥</div>
-            <div style="font-size:1.2rem; font-weight:800;">
-                Emagre<span style="color:#FF8C42;">Sim</span>
+            <div style="font-size:1.2rem; font-weight:800; color:{C.TEXT}">
+                Emagre<span style="color:{C.PRIMARY};">Sim</span>
             </div>
         </div>
         """, unsafe_allow_html=True)
         st.markdown(card(kpi("NÍVEL", lvl_name, "c-primary", f"{xp} XP") + progress_bar(lvl_pct)), unsafe_allow_html=True)
         page = st.radio("Navegação", ["Dashboard", "Registrar", "Perfil", "Config", "Telemetria"], label_visibility="collapsed")
-        st.markdown(f"<div style='margin-top:20px;font-size:0.75rem;color:{C.MUTED};'>Olá, {user.get('name', 'Usuário')}</div>", unsafe_allow_html=True)
+        st.markdown(f"<div style='margin-top:20px;font-size:0.75rem;color:{C.TEXT_MUTED};'>Olá, {user.get('name', 'Usuário')}</div>", unsafe_allow_html=True)
     return page
 
 # -----------------------------------------------------------------------------
@@ -630,11 +670,16 @@ def main():
     scores = AnalyticsEngine.scores(checkins)
     page = render_sidebar(user, xp)
     
-    if page == "Dashboard": page_dashboard(user, weights, checkins, scores, xp)
-    elif page == "Registrar": page_register(USER_ID, user)
-    elif page == "Perfil": page_profile(USER_ID, user)
-    elif page == "Config": page_config(USER_ID)
-    elif page == "Telemetria": page_telemetry(USER_ID)
+    if page == "Dashboard":
+        page_dashboard(user, weights, checkins, scores, xp)
+    elif page == "Registrar":
+        page_register(USER_ID, user)
+    elif page == "Perfil":
+        page_profile(USER_ID, user)
+    elif page == "Config":
+        page_config(USER_ID)
+    elif page == "Telemetria":
+        page_telemetry(USER_ID)
 
 if __name__ == "__main__":
     main()
