@@ -1,17 +1,15 @@
-# app.py - EmagreSim com Avatar Central
+# app.py - EmagreSim com Avatar Central (maduro)
 import streamlit as st
 import random
 from datetime import datetime
-import time
 
-# Importar Avatar Central
-from avatar_maker import (
-    tela_avatar, mostrar_avatar, avatar_feliz, avatar_triste, avatar_bravo, avatar_cansado
+from avatar_central import (
+    tela_avatar, mostrar_avatar, avatar_evoluir, avatar_mensagem, ESTADOS
 )
 
 st.set_page_config(
-    page_title="EmagreSim | Transformação",
-    page_icon="🔥",
+    page_title="EmagreSim | Recomeço",
+    page_icon="🌅",
     layout="wide",
 )
 
@@ -38,6 +36,7 @@ def mensagem_bom_dia():
 # PÁGINA LOGIN
 def pagina_login():
     st.markdown("<h1 style='text-align:center;'>🔥 EmagreSim</h1>", unsafe_allow_html=True)
+    st.markdown("<p style='text-align:center;'>Sua jornada de transformação começa aqui.</p>", unsafe_allow_html=True)
     
     col1, col2, col3 = st.columns([1, 2, 1])
     with col2:
@@ -69,6 +68,8 @@ def pagina_login():
                     "idade": 39, "altura": 1.75, "peso_atual": 144.0, "peso_meta": 90.0,
                     "sexo": "M"
                 }
+                # Avatar padrão para demo
+                st.session_state["avatar"] = ESTADOS["despertar"]
                 st.session_state["pagina"] = "dashboard"
                 st.rerun()
 
@@ -76,11 +77,11 @@ def pagina_login():
 def pagina_criar_conta():
     st.markdown("<h1 style='text-align:center;'>🔥 Criar Conta</h1>", unsafe_allow_html=True)
     
-    if "avatar_data" in st.session_state:
+    if "avatar" in st.session_state:
         col1, col2 = st.columns([1, 2])
         with col1:
             mostrar_avatar()
-            if st.button("🎨 Editar Avatar", use_container_width=True):
+            if st.button("🎨 Escolher outro símbolo", use_container_width=True):
                 st.session_state["pagina"] = "avatar"
                 st.rerun()
         with col2:
@@ -107,18 +108,13 @@ def pagina_criar_conta():
                             "sexo": "M" if sexo == "Masculino" else "F"
                         }
                         st.success(f"✅ Conta criada com sucesso, {nome}!")
-                        avatar_feliz()
                         st.session_state["pagina"] = "dashboard"
                         st.rerun()
     else:
-        st.info("🎨 Primeiro, crie seu avatar!")
-        if st.button("Criar Avatar", use_container_width=True):
+        st.info("🌅 Primeiro, escolha seu símbolo!")
+        if st.button("Escolher Símbolo", use_container_width=True):
             st.session_state["pagina"] = "avatar"
             st.rerun()
-    
-    if st.button("← Voltar", use_container_width=True):
-        st.session_state["pagina"] = "login"
-        st.rerun()
 
 # PÁGINA DASHBOARD
 def pagina_dashboard():
@@ -137,17 +133,18 @@ def pagina_dashboard():
         st.markdown(f"<h1>Olá, {usuario['nome']}!</h1>", unsafe_allow_html=True)
         st.markdown(f"<p>{mensagem_bom_dia()}</p>", unsafe_allow_html=True)
     
-    # Botões de interação com avatar
+    # Botões de interação
     col_b1, col_b2, col_b3 = st.columns(3)
     with col_b1:
-        if st.button("😊 Conquistei algo", use_container_width=True):
-            avatar_feliz()
+        if st.button("🌱 Estou progredindo", use_container_width=True):
+            if avatar_evoluir():
+                pass
     with col_b2:
-        if st.button("😢 Preciso de apoio", use_container_width=True):
-            avatar_triste()
+        if st.button("🫂 Preciso de apoio", use_container_width=True):
+            avatar_mensagem("apoio")
     with col_b3:
-        if st.button("😠 Exagerei hoje", use_container_width=True):
-            avatar_bravo("Você exagerou nas calorias hoje. Amanhã é um novo dia!")
+        if st.button("👂 Me alerta", use_container_width=True):
+            avatar_mensagem("alerta")
     
     # KPIs
     col1, col2, col3, col4 = st.columns(4)
@@ -172,17 +169,7 @@ def pagina_dashboard():
             usuario["peso_atual"] = peso_hoje
             st.success(f"✅ Peso registrado: {peso_hoje:.1f} kg")
             if peso_hoje <= usuario["peso_meta"]:
-                avatar_feliz()
-            st.rerun()
-    
-    # Simular refeição para testar avatar bravo
-    with st.expander("🍽️ Registrar Refeição", expanded=False):
-        calorias = st.number_input("Calorias (kcal)", 0, 2000, 500, 50)
-        if st.button("✅ Salvar Refeição", use_container_width=True):
-            if calorias > 1000:
-                avatar_bravo(f"Essa refeição teve {calorias} kcal. Que tal uma refeição mais leve amanhã?")
-            else:
-                st.success(f"✅ Refeição registrada: {calorias} kcal")
+                avatar_mensagem("conquista")
             st.rerun()
     
     # Botão sair
