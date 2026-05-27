@@ -1,7 +1,8 @@
 # -*- coding: utf-8 -*-
 """
-EmagreSim v6.3 - Behavioral Health OS
-Arquivo único refatorado - SEM dependência externa (pydantic removido)
+EmagreSim v6.4 - Behavioral Health OS
+Arquivo único - Funcional e estável
+Correção: migrations segura, sem pydantic, cache granular, UI melhorada
 """
 
 import streamlit as st
@@ -14,7 +15,7 @@ import os
 import time
 from datetime import datetime, timedelta, date
 from contextlib import contextmanager
-from dataclasses import dataclass, field, asdict
+from dataclasses import dataclass, field
 from typing import List, Dict, Optional, Tuple, Any
 from scipy import stats
 import plotly.graph_objects as go
@@ -37,12 +38,12 @@ st.set_page_config(
     initial_sidebar_state="expanded",
 )
 
-# URLs das imagens
+# URLs das imagens (raw do GitHub)
 LOGO_URL = "https://raw.githubusercontent.com/raphaelcaxias/emagresim/main/logo.png"
 SPLASH_URL = "https://raw.githubusercontent.com/raphaelcaxias/emagresim/main/splash.png"
 
 # -----------------------------------------------------------------------------
-# 2. CONSTANTS (centralizando magic numbers)
+# 2. CONSTANTS
 # -----------------------------------------------------------------------------
 @dataclass
 class Constants:
@@ -50,9 +51,12 @@ class Constants:
     TARGET_WATER_ML: int = 2500
     TARGET_SLEEP_HOURS: float = 7.5
     TARGET_WORKOUT_MIN: int = 30
-    WEIGHT_RANGE: Tuple[float, float] = (30.0, 300.0)
-    BODY_FAT_RANGE: Tuple[float, float] = (3.0, 60.0)
-    LEAN_MASS_RANGE: Tuple[float, float] = (20.0, 120.0)
+    WEIGHT_MIN: float = 30.0
+    WEIGHT_MAX: float = 300.0
+    BODY_FAT_MIN: float = 3.0
+    BODY_FAT_MAX: float = 60.0
+    LEAN_MASS_MIN: float = 20.0
+    LEAN_MASS_MAX: float = 120.0
     VALIDATION_TOLERANCE: float = 0.08
     XP_COOLDOWN_HOURS: int = 12
     XP_BASE: int = 10
@@ -64,107 +68,7 @@ class Constants:
 CONST = Constants()
 
 # -----------------------------------------------------------------------------
-# 3. MODELS (dataclasses - sem pydantic)
-# -----------------------------------------------------------------------------
-@dataclass
-class UserProfile:
-    id: int = 1
-    name: str = "Usuario"
-    age: int = 30
-    sex: str = "M"
-    height: float = 1.75
-    current_weight: float = 80.0
-    target_weight: float = 70.0
-    activity_level: str = "moderado"
-    created_at: datetime = field(default_factory=datetime.now)
-
-@dataclass
-class WeightEntry:
-    date: date
-    weight: float
-    body_fat: float
-    lean_mass: float
-    
-    def validate(self) -> Tuple[bool, str]:
-        if self.weight < 30 or self.weight > 300:
-            return False, "Peso fora do range (30-300 kg)"
-        if self.body_fat < 3 or self.body_fat > 60:
-            return False, "Gordura fora do range (3-60%)"
-        if self.lean_mass < 20 or self.lean_mass > 120:
-            return False, "Massa magra fora do range (20-120 kg)"
-        
-        fat_mass = self.weight * self.body_fat / 100
-        expected = self.lean_mass + fat_mass
-        if self.weight > 0 and abs(expected - self.weight) / self.weight > CONST.VALIDATION_TOLERANCE:
-            return False, f"Inconsistência: massa magra({self.lean_mass}) + gordura({fat_mass:.1f}) ≠ peso({self.weight:.1f})"
-        return True, ""
-
-@dataclass
-class CheckinEntry:
-    date: date
-    calories_consumed: float
-    water_ml: int
-    sleep_hours: float
-    workout_minutes: int
-    mood_score: int
-    emotional_state: str
-    consistency_score: int = 0
-    discipline_score: int = 0
-    
-    def validate(self) -> Tuple[bool, str]:
-        if self.calories_consumed < 0 or self.calories_consumed > 8000:
-            return False, "Calorias fora do range (0-8000)"
-        if self.water_ml < 0 or self.water_ml > 6000:
-            return False, "Água fora do range (0-6000 ml)"
-        if self.sleep_hours < 0 or self.sleep_hours > 24:
-            return False, "Sono fora do range (0-24h)"
-        if self.workout_minutes < 0 or self.workout_minutes > 600:
-            return False, "Treino fora do range (0-600 min)"
-        if self.mood_score < 1 or self.mood_score > 10:
-            return False, "Humor fora do range (1-10)"
-        return True, ""
-
-# -----------------------------------------------------------------------------
-# 4. DATABASE LAYER (Singleton)
-# -----------------------------------------------------------------------------
-class Database:
-    _instance = None
-    _connection = None
-    
-    def __new__(cls):
-        if cls._instance is None:
-            cls._instance = super().__new__(cls)
-        return cls._instance
-    
-    def get_connection(self):
-        if self._connection is None:
-            self._connection = sqlite3.connect(DB_PATH, check_same_thread=False, timeout=30)
-            self._connection.row_factory = sqlite3.Row
-            self._connection.execute("PRAGMA foreign_keys = ON")
-            self._connection.execute("PRAGMA journal_mode = WAL")
-            self._connection.execute("PRAGMA cache_size = -2000")
-        return self._connection
-    
-    def close(self):
-        if self._connection:
-            self._connection.close()
-            self._connection = None
-
-db_instance = Database()
-
-@contextmanager
-def db():
-    conn = db_instance.get_connection()
-    try:
-        yield conn
-        conn.commit()
-    except Exception as e:
-        conn.rollback()
-        raise
-    # Não fecha a conexão
-
-# -----------------------------------------------------------------------------
-# 5. DOMAIN ENGINES
+# 3. DOMAIN ENGINES
 # -----------------------------------------------------------------------------
 class ConsistencyEngine:
     @staticmethod
@@ -252,164 +156,199 @@ class AnalyticsEngine:
             else:
                 break
         return s
-    
-    @staticmethod
-    def trend_line(df: pd.DataFrame, column: str, days: int = 30) -> go.Figure:
-        recent = df.tail(days) if len(df) >= days else df
-        fig = go.Figure()
-        fig.add_trace(go.Scatter(
-            x=recent["date"], y=recent[column],
-            mode="lines+markers", name=column.capitalize(),
-            line=dict(color="#00E676", width=2), marker=dict(size=4)
-        ))
-        if len(recent) > 1:
-            x_numeric = np.arange(len(recent))
-            slope, intercept = np.polyfit(x_numeric, recent[column], 1)
-            trend_y = slope * x_numeric + intercept
-            fig.add_trace(go.Scatter(
-                x=recent["date"], y=trend_y, mode="lines",
-                line=dict(color="#FF6B35", width=1.5, dash="dot"),
-                name="Tendência"
-            ))
-        fig.update_layout(paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)", height=300, margin=dict(l=10, r=10, t=30, b=10))
-        return fig
 
 # -----------------------------------------------------------------------------
-# 6. DATABASE SCHEMA
+# 4. DATABASE LAYER (com migrations segura)
 # -----------------------------------------------------------------------------
 SCHEMA_SQL = """
-CREATE TABLE IF NOT EXISTS schema_version (version INTEGER);
 CREATE TABLE IF NOT EXISTS users (
-    id INTEGER PRIMARY KEY, name TEXT, age INT, sex TEXT,
-    height REAL, current_weight REAL, target_weight REAL,
-    activity_level TEXT, created_at TIMESTAMP
+    id INTEGER PRIMARY KEY,
+    name TEXT DEFAULT 'Usuario',
+    age INT DEFAULT 30,
+    sex TEXT DEFAULT 'M',
+    height REAL DEFAULT 1.75,
+    current_weight REAL DEFAULT 80.0,
+    target_weight REAL DEFAULT 70.0,
+    activity_level TEXT DEFAULT 'moderado',
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 CREATE TABLE IF NOT EXISTS weight_logs (
-    id INTEGER PRIMARY KEY AUTOINCREMENT, user_id INT NOT NULL, date DATE NOT NULL,
-    weight REAL, body_fat REAL, lean_mass REAL,
-    UNIQUE(user_id, date), FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id INT NOT NULL,
+    date DATE NOT NULL,
+    weight REAL NOT NULL,
+    body_fat REAL,
+    lean_mass REAL,
+    UNIQUE(user_id, date),
+    FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE
 );
 CREATE TABLE IF NOT EXISTS daily_checkins (
-    id INTEGER PRIMARY KEY AUTOINCREMENT, user_id INT NOT NULL, date DATE NOT NULL,
-    calories_consumed REAL, water_ml INT, sleep_hours REAL,
-    workout_minutes INT, mood_score INT, consistency_score INT,
-    emotional_state TEXT, discipline_score INT,
-    UNIQUE(user_id, date), FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id INT NOT NULL,
+    date DATE NOT NULL,
+    calories_consumed REAL,
+    water_ml INT,
+    sleep_hours REAL,
+    workout_minutes INT,
+    mood_score INT,
+    consistency_score INT,
+    emotional_state TEXT,
+    discipline_score INT,
+    UNIQUE(user_id, date),
+    FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE
 );
 CREATE TABLE IF NOT EXISTS user_badges (
-    id INTEGER PRIMARY KEY AUTOINCREMENT, user_id INT NOT NULL, badge_key TEXT NOT NULL,
-    unlocked_at TIMESTAMP, UNIQUE(user_id, badge_key)
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id INT NOT NULL,
+    badge_key TEXT NOT NULL,
+    unlocked_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE(user_id, badge_key)
 );
 CREATE TABLE IF NOT EXISTS xp_logs (
-    id INTEGER PRIMARY KEY AUTOINCREMENT, user_id INT NOT NULL, amount INT NOT NULL,
-    source TEXT, created_at TIMESTAMP
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id INT NOT NULL,
+    amount INT NOT NULL,
+    source TEXT,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 CREATE TABLE IF NOT EXISTS user_events (
-    id INTEGER PRIMARY KEY AUTOINCREMENT, user_id INT NOT NULL, event_name TEXT NOT NULL,
-    metadata TEXT, created_at TIMESTAMP
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id INT NOT NULL,
+    event_name TEXT NOT NULL,
+    metadata TEXT,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 CREATE INDEX IF NOT EXISTS idx_checkins ON daily_checkins(user_id, date DESC);
 CREATE INDEX IF NOT EXISTS idx_weights ON weight_logs(user_id, date DESC);
 CREATE INDEX IF NOT EXISTS idx_events ON user_events(user_id, created_at DESC);
 """
 
-def run_migrations(conn):
-    cur = conn.execute("SELECT version FROM schema_version")
-    row = cur.fetchone()
-    current_version = row[0] if row else 0
-    
-    if current_version < 1:
-        conn.executescript(SCHEMA_SQL)
-        conn.execute("INSERT INTO schema_version VALUES (1)")
-    
-    if current_version < 2:
-        try:
-            conn.execute("ALTER TABLE users ADD COLUMN created_at TIMESTAMP")
-        except sqlite3.OperationalError:
-            pass
-        conn.execute("UPDATE schema_version SET version=2")
+@contextmanager
+def db():
+    conn = sqlite3.connect(DB_PATH, check_same_thread=False, timeout=30)
+    conn.row_factory = sqlite3.Row
+    conn.execute("PRAGMA foreign_keys = ON")
+    conn.execute("PRAGMA journal_mode = WAL")
+    try:
+        yield conn
+        conn.commit()
+    except Exception as e:
+        conn.rollback()
+        raise
+    finally:
+        conn.close()
 
 def init_db():
+    """Inicializa o banco de dados com verificacao segura de tabelas"""
     with db() as conn:
-        run_migrations(conn)
-    logger.info("Database initialized")
+        # Verifica se a tabela users existe
+        cursor = conn.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='users'")
+        table_exists = cursor.fetchone() is not None
+        
+        if not table_exists:
+            # Primeira execucao: cria todas as tabelas
+            conn.executescript(SCHEMA_SQL)
+            logger.info("Database schema created")
+        else:
+            logger.info("Database already exists")
+    
+    # Seed apenas se nao houver dados
+    with db() as conn:
+        count = conn.execute("SELECT COUNT(*) FROM users").fetchone()[0]
+        if count == 0:
+            _generate_seed(conn)
+
+def _generate_seed(conn):
+    """Gera dados demo apenas quando o banco está vazio"""
+    conn.execute("""
+        INSERT INTO users (id, name, age, sex, height, current_weight, target_weight, activity_level)
+        VALUES (1, 'Usuario Demo', 30, 'M', 1.78, 88.0, 72.0, 'moderado')
+    """)
+    
+    end_date = date.today() - timedelta(days=1)
+    dates = [end_date - timedelta(days=x) for x in range(180)][::-1]
+    rng = np.random.default_rng(42)
+    weights = []
+    checkins = []
+    
+    for i, d in enumerate(dates):
+        w = max(88.0 - 0.025 * i + rng.normal(0, 0.3), 55.0)
+        bf = max(22 - 0.04 * i, 8)
+        lm = 35 + 0.008 * i
+        weights.append((1, d.isoformat(), round(w, 1), round(bf, 1), round(lm, 1)))
+        
+        cons = int(np.clip(70 - 0.1 * i + rng.normal(0, 8), 40, 98))
+        disc = int(np.clip(cons + rng.integers(-5, 6), 40, 98))
+        checkins.append((1, d.isoformat(), 1800, 2500, 7.2, 45, 6, cons, "Motivado", disc))
+    
+    conn.executemany("INSERT INTO weight_logs(user_id,date,weight,body_fat,lean_mass) VALUES(?,?,?,?,?)", weights)
+    conn.executemany("INSERT INTO daily_checkins(user_id,date,calories_consumed,water_ml,sleep_hours,workout_minutes,mood_score,consistency_score,emotional_state,discipline_score) VALUES(?,?,?,?,?,?,?,?,?,?)", checkins)
+    conn.execute("INSERT INTO xp_logs(user_id,amount,source) VALUES(1,500,'seed')")
+    logger.info("Seed data generated")
 
 # -----------------------------------------------------------------------------
-# 7. REPOSITORY
+# 5. REPOSITORY (cache granular)
 # -----------------------------------------------------------------------------
-@st.cache_resource(ttl=3600)
-def get_db_connection():
-    return db_instance.get_connection()
-
 @st.cache_data(ttl=300, show_spinner=False)
-def load_user(uid: int) -> Optional[Dict]:
+def load_user(uid: int = USER_ID) -> Optional[Dict]:
     with db() as conn:
         row = conn.execute("SELECT * FROM users WHERE id=?", (uid,)).fetchone()
         return dict(row) if row else None
 
 @st.cache_data(ttl=300, show_spinner=False)
-def load_weights(uid: int) -> pd.DataFrame:
+def load_weights(uid: int = USER_ID) -> pd.DataFrame:
     with db() as conn:
         return pd.read_sql("SELECT * FROM weight_logs WHERE user_id=? ORDER BY date", conn, params=(uid,), parse_dates=["date"])
 
 @st.cache_data(ttl=300, show_spinner=False)
-def load_checkins(uid: int) -> pd.DataFrame:
+def load_checkins(uid: int = USER_ID) -> pd.DataFrame:
     with db() as conn:
         return pd.read_sql("SELECT * FROM daily_checkins WHERE user_id=? ORDER BY date", conn, params=(uid,), parse_dates=["date"])
 
 @st.cache_data(ttl=300, show_spinner=False)
-def load_xp_total(uid: int) -> int:
+def load_xp_total(uid: int = USER_ID) -> int:
     with db() as conn:
         row = conn.execute("SELECT COALESCE(SUM(amount),0) FROM xp_logs WHERE user_id=?", (uid,)).fetchone()
         return row[0] if row else 0
 
-def invalidate_user_cache(uid: int):
+def invalidate_cache():
+    """Limpa apenas o cache relacionado aos dados do usuario"""
     load_user.clear()
     load_weights.clear()
     load_checkins.clear()
     load_xp_total.clear()
 
 # -----------------------------------------------------------------------------
-# 8. SERVICES
+# 6. SERVICES
 # -----------------------------------------------------------------------------
 def track_event(uid: int, event_name: str, metadata: dict = None):
     with db() as conn:
         conn.execute(
-            "INSERT INTO user_events(user_id, event_name, metadata, created_at) VALUES(?,?,?,?)",
-            (uid, event_name, json.dumps(metadata or {}), datetime.now().isoformat())
+            "INSERT INTO user_events(user_id, event_name, metadata) VALUES(?,?,?)",
+            (uid, event_name, json.dumps(metadata or {}))
         )
 
-def _upsert_record(table: str, uid: int, data: dict, date_key: str = "date"):
+def save_checkin(uid: int, data: dict) -> int:
+    is_new = False
     with db() as conn:
         existing = conn.execute(
-            f"SELECT id FROM {table} WHERE user_id=? AND {date_key}=?", (uid, data[date_key])
+            "SELECT id FROM daily_checkins WHERE user_id=? AND date=?", (uid, data["date"])
         ).fetchone()
         
         if existing:
             set_clause = ", ".join(f"{k}=?" for k in data)
             conn.execute(
-                f"UPDATE {table} SET {set_clause} WHERE user_id=? AND {date_key}=?",
-                list(data.values()) + [uid, data[date_key]]
+                f"UPDATE daily_checkins SET {set_clause} WHERE user_id=? AND date=?",
+                list(data.values()) + [uid, data["date"]]
             )
-            return False
         else:
             cols = ", ".join(data.keys())
             placeholders = ", ".join(["?"] * len(data))
             conn.execute(
-                f"INSERT INTO {table}(user_id,{cols}) VALUES(?,{placeholders})",
+                f"INSERT INTO daily_checkins(user_id,{cols}) VALUES(?,{placeholders})",
                 [uid] + list(data.values())
             )
-            return True
-
-def save_checkin(uid: int, data: dict) -> int:
-    # Validação
-    entry = CheckinEntry(**data)
-    valid, msg = entry.validate()
-    if not valid:
-        st.error(f"❌ {msg}")
-        return 0
-    
-    is_new = _upsert_record("daily_checkins", uid, data, "date")
+            is_new = True
     
     xp = 0
     if is_new and XPEngine.can_earn(uid, "checkin"):
@@ -420,37 +359,45 @@ def save_checkin(uid: int, data: dict) -> int:
         )
         with db() as conn:
             conn.execute(
-                "INSERT INTO xp_logs(user_id, amount, source, created_at) VALUES(?,?,?,?)",
-                (uid, xp, "checkin", datetime.now().isoformat())
+                "INSERT INTO xp_logs(user_id, amount, source) VALUES(?,?,?)",
+                (uid, xp, "checkin")
             )
     
     track_event(uid, "checkin_saved", {"xp": xp, "date": data["date"]})
-    invalidate_user_cache(uid)
+    invalidate_cache()
     return xp
 
 def save_weight(uid: int, data: dict) -> int:
-    entry = WeightEntry(**data)
-    valid, msg = entry.validate()
-    if not valid:
-        st.error(f"❌ {msg}")
-        return 0
-    
-    is_new = _upsert_record("weight_logs", uid, data, "date")
+    is_new = False
+    with db() as conn:
+        existing = conn.execute(
+            "SELECT id FROM weight_logs WHERE user_id=? AND date=?", (uid, data["date"])
+        ).fetchone()
+        
+        if existing:
+            set_clause = ", ".join(f"{k}=?" for k in data)
+            conn.execute(
+                f"UPDATE weight_logs SET {set_clause} WHERE user_id=? AND date=?",
+                list(data.values()) + [uid, data["date"]]
+            )
+        else:
+            cols = ", ".join(data.keys())
+            placeholders = ", ".join(["?"] * len(data))
+            conn.execute(
+                f"INSERT INTO weight_logs(user_id,{cols}) VALUES(?,{placeholders})",
+                [uid] + list(data.values())
+            )
+            is_new = True
+        conn.execute("UPDATE users SET current_weight=? WHERE id=?", (data["weight"], uid))
     
     xp = 0
     if is_new and XPEngine.can_earn(uid, "weight"):
         xp = CONST.XP_WEIGHT_BASE
         with db() as conn:
-            conn.execute(
-                "INSERT INTO xp_logs(user_id, amount, source, created_at) VALUES(?,?,?,?)",
-                (uid, xp, "weight", datetime.now().isoformat())
-            )
-    
-    with db() as conn:
-        conn.execute("UPDATE users SET current_weight=? WHERE id=?", (data["weight"], uid))
+            conn.execute("INSERT INTO xp_logs(user_id, amount, source) VALUES(?,?,?)", (uid, xp, "weight"))
     
     track_event(uid, "weight_saved", {"weight": data["weight"], "date": data["date"]})
-    invalidate_user_cache(uid)
+    invalidate_cache()
     return xp
 
 def update_profile(uid: int, updates: dict):
@@ -458,15 +405,18 @@ def update_profile(uid: int, updates: dict):
         set_clause = ", ".join(f"{k}=?" for k in updates)
         conn.execute(f"UPDATE users SET {set_clause} WHERE id=?", list(updates.values()) + [uid])
     track_event(uid, "profile_updated", updates)
-    invalidate_user_cache(uid)
+    invalidate_cache()
 
-def reset_all(uid: int):
+def reset_all(uid: int = USER_ID):
     with db() as conn:
-        for tbl in ("xp_logs", "user_badges", "user_events", "daily_checkins", "weight_logs", "users"):
-            conn.execute(f"DELETE FROM {tbl} WHERE {'user_id' if tbl != 'users' else 'id'}=?", (uid,))
-    seed_if_empty()
+        for tbl in ("xp_logs", "user_badges", "user_events", "daily_checkins", "weight_logs"):
+            conn.execute(f"DELETE FROM {tbl} WHERE user_id=?", (uid,))
+        conn.execute("DELETE FROM users WHERE id=?", (uid,))
+    # Recria os dados
+    with db() as conn:
+        _generate_seed(conn)
     track_event(uid, "reset_data", {})
-    invalidate_user_cache(uid)
+    invalidate_cache()
 
 def export_data(uid: int) -> Tuple[pd.DataFrame, pd.DataFrame]:
     return load_checkins(uid), load_weights(uid)
@@ -476,42 +426,7 @@ def get_events_df(uid: int) -> pd.DataFrame:
         return pd.read_sql("SELECT * FROM user_events WHERE user_id=? ORDER BY created_at DESC", conn, params=(uid,))
 
 # -----------------------------------------------------------------------------
-# 9. SEED
-# -----------------------------------------------------------------------------
-def seed_if_empty():
-    with db() as conn:
-        count = conn.execute("SELECT COUNT(*) FROM users").fetchone()[0]
-        if count > 0:
-            return
-        
-        conn.execute("""
-            INSERT INTO users VALUES (1, 'Usuario Demo', 30, 'M', 1.78, 88.0, 72.0, 'moderado', ?)
-        """, (datetime.now().isoformat(),))
-        
-        end_date = date.today() - timedelta(days=1)
-        dates = [end_date - timedelta(days=x) for x in range(180)][::-1]
-        rng = np.random.default_rng(42)
-        weights = []
-        checkins = []
-        
-        for i, d in enumerate(dates):
-            w = max(88.0 - 0.025 * i + rng.normal(0, 0.3), 55.0)
-            bf = max(22 - 0.04 * i, 8)
-            lm = 35 + 0.008 * i
-            weights.append((1, d.isoformat(), round(w, 1), round(bf, 1), round(lm, 1)))
-            
-            cons = int(np.clip(70 - 0.1 * i + rng.normal(0, 8), 40, 98))
-            disc = int(np.clip(cons + rng.integers(-5, 6), 40, 98))
-            checkins.append((1, d.isoformat(), 1800, 2500, 7.2, 45, 6, cons, "Motivado", disc))
-        
-        conn.executemany("INSERT INTO weight_logs(user_id,date,weight,body_fat,lean_mass) VALUES(?,?,?,?,?)", weights)
-        conn.executemany("INSERT INTO daily_checkins(user_id,date,calories_consumed,water_ml,sleep_hours,workout_minutes,mood_score,consistency_score,emotional_state,discipline_score) VALUES(?,?,?,?,?,?,?,?,?,?)", checkins)
-        conn.execute("INSERT INTO xp_logs(user_id,amount,source,created_at) VALUES(1,500,'seed',?)", (datetime.now().isoformat(),))
-    
-    logger.info("Seed completed")
-
-# -----------------------------------------------------------------------------
-# 10. UI COMPONENTS
+# 7. UI COMPONENTS
 # -----------------------------------------------------------------------------
 class UI:
     @staticmethod
@@ -538,7 +453,7 @@ class UI:
         st.markdown(f"<h2>{title}</h2>{sub}<hr style='border:none;border-top:1px solid rgba(255,255,255,0.06);margin:12px 0 20px 0;'>", unsafe_allow_html=True)
 
 # -----------------------------------------------------------------------------
-# 11. CSS
+# 8. CSS (otimizado)
 # -----------------------------------------------------------------------------
 CUSTOM_CSS = """
 <style>
@@ -573,17 +488,17 @@ div[data-testid="stMetric"] label { color: #64748B !important; font-size: .7rem 
 st.markdown(CUSTOM_CSS, unsafe_allow_html=True)
 
 # -----------------------------------------------------------------------------
-# 12. SPLASH
+# 9. SPLASH CORRIGIDO
 # -----------------------------------------------------------------------------
 if "app_initialized" not in st.session_state:
     with st.container():
         st.image(SPLASH_URL, use_container_width=True)
         st.session_state["app_initialized"] = True
-        time.sleep(0.3)
+        time.sleep(0.5)
         st.rerun()
 
 # -----------------------------------------------------------------------------
-# 13. PAGES
+# 10. PAGES
 # -----------------------------------------------------------------------------
 def page_dashboard(user, weights, checkins, scores, xp):
     UI.section_header("Dashboard Estratégico", "Visão geral do seu comportamento e progresso")
@@ -600,9 +515,6 @@ def page_dashboard(user, weights, checkins, scores, xp):
     
     st.markdown(UI.card(UI.kpi("NIVEL", lvl_name, "c-purple", f"{xp} XP") + UI.progress_bar(lvl_pct)), unsafe_allow_html=True)
     
-    if not weights.empty:
-        st.plotly_chart(AnalyticsEngine.trend_line(weights, "weight"), use_container_width=True)
-    
     if checkins.empty:
         st.info("📝 Nenhum registro ainda. Vá em 'Registrar' para começar sua jornada.")
 
@@ -614,11 +526,11 @@ def page_register(uid: int, user: Dict):
         with st.form("form_checkin"):
             col1, col2 = st.columns(2)
             with col1:
-                cal = st.number_input("Calorias", 0, 8000, 1800, 50, help="Valor alvo: 1800 kcal")
-                water = st.number_input("Agua (ml)", 0, 6000, 2500, 100, help="Meta: 2500 ml")
-                sleep = st.slider("Sono (h)", 0.0, 12.0, 7.0, 0.5, help="Recomendado: 7-8h")
+                cal = st.number_input("Calorias", 0, 8000, 1800, 50)
+                water = st.number_input("Agua (ml)", 0, 6000, 2500, 100)
+                sleep = st.slider("Sono (h)", 0.0, 12.0, 7.0, 0.5)
             with col2:
-                workout = st.number_input("Treino (min)", 0, 300, 0, 5, help="Meta: 30 min/dia")
+                workout = st.number_input("Treino (min)", 0, 300, 0, 5)
                 mood = st.slider("Humor (1-10)", 1, 10, 7)
                 emotion = st.selectbox("Estado emocional", ["Focado", "Motivado", "Determinado", "Cansado", "Ansioso"])
             
@@ -644,25 +556,17 @@ def page_register(uid: int, user: Dict):
                             st.balloons()
                     else:
                         st.toast("Check-in atualizado!", icon="✏️")
-                    time.sleep(0.5)
                     st.rerun()
     
     with tab2:
         with st.form("form_weight"):
             col1, col2, col3 = st.columns(3)
             with col1:
-                w = st.number_input("Peso (kg)", 40.0, 250.0, float(user["current_weight"]), 0.1, help="Valide com gordura+massa magra")
+                w = st.number_input("Peso (kg)", CONST.WEIGHT_MIN, CONST.WEIGHT_MAX, float(user["current_weight"]), 0.1)
             with col2:
-                bf = st.number_input("Gordura (%)", 3.0, 60.0, 20.0, 0.1)
+                bf = st.number_input("Gordura (%)", CONST.BODY_FAT_MIN, CONST.BODY_FAT_MAX, 20.0, 0.1)
             with col3:
-                lm = st.number_input("Massa magra (kg)", 20.0, 120.0, 35.0, 0.1)
-            
-            # Validação em tempo real
-            if w > 0 and bf > 0 and lm > 0:
-                fat_mass = w * bf / 100
-                expected = lm + fat_mass
-                if abs(expected - w) / w > 0.08:
-                    st.warning("⚠️ Inconsistência: peso não condiz com gordura+massa magra")
+                lm = st.number_input("Massa magra (kg)", CONST.LEAN_MASS_MIN, CONST.LEAN_MASS_MAX, 35.0, 0.1)
             
             if st.form_submit_button("Salvar Peso"):
                 with st.spinner("Salvando..."):
@@ -672,7 +576,6 @@ def page_register(uid: int, user: Dict):
                         st.toast(f"Peso salvo! +{xp} XP", icon="⚖️")
                     else:
                         st.toast("Peso atualizado!", icon="✏️")
-                    time.sleep(0.5)
                     st.rerun()
 
 def page_profile(uid: int, user: Dict):
@@ -685,7 +588,7 @@ def page_profile(uid: int, user: Dict):
             sex = st.selectbox("Sexo", ["M", "F"], index=0 if user["sex"] == "M" else 1)
         with col2:
             height = st.number_input("Altura (m)", 1.40, 2.20, float(user["height"]), 0.01)
-            target = st.number_input("Meta de peso (kg)", 40.0, 200.0, float(user["target_weight"]), 0.5)
+            target = st.number_input("Meta de peso (kg)", CONST.WEIGHT_MIN, CONST.WEIGHT_MAX, float(user["target_weight"]), 0.5)
             acts = ["sedentario", "leve", "moderado", "intenso", "extremo"]
             act = st.selectbox("Nivel de atividade", acts, index=acts.index(user["activity_level"]) if user["activity_level"] in acts else 2)
         if st.form_submit_button("Salvar Alteracoes"):
@@ -737,7 +640,7 @@ def page_telemetry(uid: int):
     st.dataframe(df.head(50), use_container_width=True)
 
 # -----------------------------------------------------------------------------
-# 14. SIDEBAR
+# 11. SIDEBAR
 # -----------------------------------------------------------------------------
 def render_sidebar(user: Dict, xp: int) -> str:
     lvl_name, _, lvl_pct = LevelEngine.info(xp)
@@ -749,13 +652,16 @@ def render_sidebar(user: Dict, xp: int) -> str:
     return page
 
 # -----------------------------------------------------------------------------
-# 15. MAIN
+# 12. MAIN
 # -----------------------------------------------------------------------------
 def main():
     init_db()
-    seed_if_empty()
     
     user = load_user(USER_ID)
+    if user is None:
+        st.error("Erro ao carregar dados. Recarregue a pagina.")
+        return
+    
     weights = load_weights(USER_ID)
     checkins = load_checkins(USER_ID)
     xp = load_xp_total(USER_ID)
