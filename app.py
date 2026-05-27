@@ -1,15 +1,7 @@
-# app.py
+# app.py - VERSÃO COMPLETA SEM AVATAR_MAKER
 import streamlit as st
 import random
 from datetime import datetime
-
-# Tentar importar avatar_maker, se falhar, usa fallback
-try:
-    from avatar_maker import tela_avatar
-    AVATAR_AVAILABLE = True
-except ImportError:
-    AVATAR_AVAILABLE = False
-    st.warning("Avatar Maker não disponível. Usando versão simplificada.")
 
 # Configuração da página
 st.set_page_config(
@@ -41,24 +33,46 @@ def mensagem_bom_dia():
     return "🌙 Boa noite! Amanhã é outro dia."
 
 # -----------------------------------------------------------------------------
-# PÁGINA AVATAR (fallback)
+# PÁGINA AVATAR (SIMPLES, SEM ARQUIVO EXTERNO)
 # -----------------------------------------------------------------------------
-def tela_avatar_simples():
-    st.markdown("<h1 style='text-align:center;'>🎨 Crie seu Avatar (versão simples)</h1>", unsafe_allow_html=True)
+def tela_avatar():
+    st.markdown("<h1 style='text-align:center;'>🎨 Crie seu Avatar</h1>", unsafe_allow_html=True)
     
-    col1, col2 = st.columns(2)
+    col1, col2 = st.columns([1, 1])
+    
     with col1:
-        estilo = st.selectbox("Estilo", ["🔥 Fogo", "💪 Forte", "🧘 Calmo", "🏃 Veloz"])
-        cor = st.color_picker("Cor principal", "#FF4D00")
-    with col2:
-        st.markdown(f"""
-        <div style="background: {cor}; border-radius: 50%; width: 150px; height: 150px; display: flex; align-items: center; justify-content: center; margin: 0 auto;">
-            <span style="font-size: 4rem;">{estilo[0]}</span>
-        </div>
-        """, unsafe_allow_html=True)
+        genero = st.selectbox("Gênero", ["Masculino", "Feminino"])
+        estilo = st.selectbox("Estilo", ["🔥 Energético", "💪 Forte", "🧘 Calmo", "🏃 Veloz", "😊 Feliz", "🤔 Pensativo"])
+        cor_principal = st.color_picker("Cor principal", "#FF4D00")
+        cor_fundo = st.color_picker("Cor de fundo", "#1A1A1A")
+        
+        if st.button("🎲 Criar aleatório", use_container_width=True):
+            estilos = ["🔥 Energético", "💪 Forte", "🧘 Calmo", "🏃 Veloz", "😊 Feliz", "🤔 Pensativo"]
+            estilo = random.choice(estilos)
+            cor_principal = random.choice(["#FF4D00", "#22C55E", "#3B82F6", "#8B5CF6", "#F59E0B", "#EF4444"])
+            st.rerun()
     
-    if st.button("✅ Salvar Avatar", use_container_width=True):
-        st.session_state["avatar_simples"] = {"estilo": estilo, "cor": cor}
+    with col2:
+        # Avatar SVG simples
+        emoji = estilo[0]
+        svg = f'''<svg width="200" height="200" viewBox="0 0 200 200" xmlns="http://www.w3.org/2000/svg">
+            <rect width="200" height="200" rx="20" fill="{cor_fundo}"/>
+            <circle cx="100" cy="95" r="60" fill="{cor_principal}" stroke="white" stroke-width="3"/>
+            <circle cx="75" cy="85" r="8" fill="white"/>
+            <circle cx="125" cy="85" r="8" fill="white"/>
+            <circle cx="77" cy="85" r="4" fill="black"/>
+            <circle cx="127" cy="85" r="4" fill="black"/>
+            <path d="M 80 115 Q 100 130 120 115" stroke="white" stroke-width="3" fill="none" stroke-linecap="round"/>
+            <text x="100" y="175" text-anchor="middle" font-size="40" fill="white">{emoji}</text>
+        </svg>'''
+        st.markdown(f'<div style="display: flex; justify-content: center;">{svg}</div>', unsafe_allow_html=True)
+        
+        st.download_button("⬇️ Baixar Avatar (SVG)", svg, "meu_avatar.svg", "image/svg+xml", use_container_width=True)
+    
+    st.markdown("---")
+    if st.button("✅ Salvar Avatar e Continuar", use_container_width=True):
+        st.session_state["avatar_svg"] = svg
+        st.session_state["avatar_estilo"] = estilo
         st.session_state["pagina"] = "criar_conta"
         st.rerun()
 
@@ -107,33 +121,47 @@ def pagina_login():
 def pagina_criar_conta():
     st.markdown("<h1 style='text-align:center;'>🔥 Criar Conta</h1>", unsafe_allow_html=True)
     
-    with st.form("form_criar_conta"):
-        nome = st.text_input("Nome completo")
-        email = st.text_input("E-mail")
-        senha = st.text_input("Senha", type="password")
-        
-        col_a, col_b = st.columns(2)
-        with col_a:
-            idade = st.number_input("Idade", 18, 100, 30)
-            altura = st.number_input("Altura (m)", 1.40, 2.50, 1.75, 0.01)
-        with col_b:
-            peso = st.number_input("Peso atual (kg)", 30.0, 300.0, 80.0, 0.1)
-            meta_peso = st.number_input("Meta de peso (kg)", 40.0, 200.0, 70.0, 0.5)
-        
-        sexo = st.selectbox("Sexo", ["Masculino", "Feminino"])
-        
-        if st.form_submit_button("🔥 Criar minha conta", use_container_width=True):
-            if nome and email and senha:
-                st.session_state["usuario"] = {
-                    "nome": nome, "email": email, "idade": idade,
-                    "altura": altura, "peso_atual": peso, "peso_meta": meta_peso,
-                    "sexo": "M" if sexo == "Masculino" else "F",
-                    "avatar": st.session_state.get("avatar_simples", {}).get("estilo", "🔥")
-                }
-                st.success(f"✅ Conta criada com sucesso, {nome}!")
-                st.balloons()
-                st.session_state["pagina"] = "dashboard"
+    # Mostrar avatar se já foi criado
+    if "avatar_svg" in st.session_state:
+        col1, col2 = st.columns([1, 2])
+        with col1:
+            st.markdown(f'<div style="display: flex; justify-content: center;">{st.session_state["avatar_svg"]}</div>', unsafe_allow_html=True)
+            if st.button("🎨 Editar Avatar", use_container_width=True):
+                st.session_state["pagina"] = "avatar"
                 st.rerun()
+        with col2:
+            with st.form("form_criar_conta"):
+                nome = st.text_input("Nome completo")
+                email = st.text_input("E-mail")
+                senha = st.text_input("Senha", type="password")
+                
+                col_a, col_b = st.columns(2)
+                with col_a:
+                    idade = st.number_input("Idade", 18, 100, 30)
+                    altura = st.number_input("Altura (m)", 1.40, 2.50, 1.75, 0.01)
+                with col_b:
+                    peso = st.number_input("Peso atual (kg)", 30.0, 300.0, 80.0, 0.1)
+                    meta_peso = st.number_input("Meta de peso (kg)", 40.0, 200.0, 70.0, 0.5)
+                
+                sexo = st.selectbox("Sexo", ["Masculino", "Feminino"])
+                
+                if st.form_submit_button("🔥 Criar minha conta", use_container_width=True):
+                    if nome and email and senha:
+                        st.session_state["usuario"] = {
+                            "nome": nome, "email": email, "idade": idade,
+                            "altura": altura, "peso_atual": peso, "peso_meta": meta_peso,
+                            "sexo": "M" if sexo == "Masculino" else "F",
+                            "avatar": st.session_state.get("avatar_svg", "🔥")
+                        }
+                        st.success(f"✅ Conta criada com sucesso, {nome}!")
+                        st.balloons()
+                        st.session_state["pagina"] = "dashboard"
+                        st.rerun()
+    else:
+        st.info("🎨 Primeiro, crie seu avatar!")
+        if st.button("Criar Avatar", use_container_width=True):
+            st.session_state["pagina"] = "avatar"
+            st.rerun()
     
     if st.button("← Voltar", use_container_width=True):
         st.session_state["pagina"] = "login"
@@ -189,16 +217,15 @@ def main():
     if "pagina" not in st.session_state:
         st.session_state["pagina"] = "login"
     
-    if st.session_state["pagina"] == "login":
+    pagina = st.session_state["pagina"]
+    
+    if pagina == "login":
         pagina_login()
-    elif st.session_state["pagina"] == "avatar":
-        if AVATAR_AVAILABLE:
-            tela_avatar()
-        else:
-            tela_avatar_simples()
-    elif st.session_state["pagina"] == "criar_conta":
+    elif pagina == "avatar":
+        tela_avatar()
+    elif pagina == "criar_conta":
         pagina_criar_conta()
-    elif st.session_state["pagina"] == "dashboard":
+    elif pagina == "dashboard":
         pagina_dashboard()
     else:
         pagina_login()
