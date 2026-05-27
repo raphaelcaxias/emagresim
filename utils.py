@@ -2,18 +2,17 @@
 import streamlit as st
 import random
 import plotly.graph_objects as go
-import plotly.express as px
 from datetime import datetime, timedelta, date
 import pandas as pd
 
-from config import RECEITAS, CONQUISTAS
+from config import RECEITAS
 
 def calcular_imc(peso, altura):
     return peso / (altura ** 2)
 
 def classificar_imc(imc):
     if imc < 18.5: return "Abaixo do peso"
-    if imc < 25: return "Saudável"
+    if imc < 25: return "SaudÃ¡vel"
     if imc < 30: return "Sobrepeso"
     if imc < 35: return "Obesidade Grau I"
     if imc < 40: return "Obesidade Grau II"
@@ -37,7 +36,6 @@ def gerar_grafico_peso(historico, meta):
             fill="tozeroy", fillcolor="rgba(255,77,0,0.1)"
         ))
     else:
-        # Dados simulados
         datas = [date.today() - timedelta(days=x) for x in range(30, -1, -1)]
         pesos = [85 - i * 0.15 + random.uniform(-0.5, 0.5) for i in range(31)]
         fig.add_trace(go.Scatter(
@@ -69,19 +67,18 @@ def receita_do_dia():
 def mensagem_bom_dia():
     hora = datetime.now().hour
     if hora < 12:
-        return "?? Bom dia! Hoje é um novo começo."
+        return "ðŸŒ… Bom dia! Hoje Ã© um novo comeÃ§o."
     elif hora < 18:
-        return "??? Boa tarde! Continue firme."
-    return "?? Boa noite! Amanhã é outro dia."
+        return "ðŸŒ¤ï¸ Boa tarde! Continue firme."
+    return "ðŸŒ™ Boa noite! AmanhÃ£ Ã© outro dia."
 
 def badge_desbloqueada(conquista_key):
     if "conquistas" not in st.session_state:
         st.session_state.conquistas = []
     
-    for c in CONQUISTAS:
-        if c["key"] == conquista_key and conquista_key not in st.session_state.conquistas:
-            st.session_state.conquistas.append(conquista_key)
-            return True
+    if conquista_key not in st.session_state.conquistas:
+        st.session_state.conquistas.append(conquista_key)
+        return True
     return False
 
 def progresso_meta_diaria(calorias_consumidas, meta_calorica):
