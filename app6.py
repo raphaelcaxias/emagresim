@@ -1,14 +1,15 @@
 # -*- coding: utf-8 -*-
 """
-EmagreSim v12.1 - Responsivo + Layout Premium
+EmagreSim v13.0 - Com criação de conta, gráficos e layout responsivo
 """
 
 import streamlit as st
 import pandas as pd
 import plotly.express as px
+import plotly.graph_objects as go
 from datetime import datetime, timedelta, date
 from supabase import create_client, Client
-from streamlit_confetti import confetti
+import random
 
 # -----------------------------------------------------------------------------
 # 1. CONFIGURAÇÕES
@@ -17,7 +18,7 @@ st.set_page_config(
     page_title="EmagreSim | Transformação",
     page_icon="🔥",
     layout="wide",
-    initial_sidebar_state="expanded",
+    initial_sidebar_state="collapsed",
 )
 
 # Conectar ao Supabase
@@ -26,7 +27,7 @@ try:
     SUPABASE_KEY = st.secrets["CHAVE_SUPABASE"]
     supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
 except:
-    st.error("Erro de conexão com Supabase")
+    st.warning("Modo offline - usando dados de demonstração")
 
 # -----------------------------------------------------------------------------
 # 2. CORES E TEMAS
@@ -52,12 +53,8 @@ def aplicar_css():
     C = get_tema()
     css = f"""
     <style>
-    * {{ margin: 0; padding: 0; box-sizing: border-box; }}
+    .stApp {{ background: {C['bg']} !important; }}
     
-    .stApp, .stApp > header {{ background: {C['bg']} !important; }}
-    section[data-testid="stSidebar"] {{ background: {C['surface']} !important; border-right: none !important; }}
-    
-    /* Cards responsivos */
     .card, .kpi-card {{
         background: {C['card']};
         border-radius: 20px;
@@ -68,92 +65,25 @@ def aplicar_css():
         transition: all 0.3s ease;
     }}
     
-    .card:hover, .kpi-card:hover {{
-        transform: translateY(-3px);
-        box-shadow: 0 8px 24px rgba(0,0,0,0.12);
+    .card:hover {{ transform: translateY(-3px); box-shadow: 0 8px 24px rgba(0,0,0,0.12); }}
+    
+    .kpi-label {{ font-size: 0.7rem; color: {C['text_muted']}; text-transform: uppercase; }}
+    .kpi-value {{ font-size: 1.8rem; font-weight: 800; color: {C['primary']}; }}
+    
+    h1, h2, h3 {{ color: {C['text']} !important; }}
+    
+    .stButton > button {{
+        border-radius: 40px !important;
+        font-weight: 600 !important;
+        transition: all 0.2s !important;
     }}
+    .stButton > button:hover {{ transform: translateY(-2px); }}
     
-    /* KPIs responsivos */
-    .kpi-label {{ font-size: 0.7rem; color: {C['text_muted']}; text-transform: uppercase; letter-spacing: 0.05em; }}
-    .kpi-value {{ font-size: 1.8rem; font-weight: 800; color: {C['primary']}; line-height: 1.2; }}
-    .kpi-sub {{ font-size: 0.7rem; color: {C['text_muted']}; margin-top: 0.25rem; }}
-    
-    /* Grid responsivo */
-    .grid-2, .grid-3, .grid-4 {{ display: grid; gap: 1rem; margin-bottom: 1rem; }}
-    .grid-2 {{ grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); }}
-    .grid-3 {{ grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); }}
-    .grid-4 {{ grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); }}
-    
-    /* Botões */
-    .btn-primary {{
-        background: {C['primary']};
-        color: white;
-        border: none;
-        border-radius: 40px;
-        padding: 0.6rem 1.2rem;
-        font-weight: 600;
-        width: 100%;
-        cursor: pointer;
-        transition: all 0.2s;
-    }}
-    .btn-primary:hover {{ opacity: 0.9; transform: translateY(-2px); }}
-    
-    .btn-secondary {{
-        background: transparent;
-        border: 1px solid {C['primary']};
-        color: {C['primary']};
-        border-radius: 40px;
-        padding: 0.6rem 1.2rem;
-        font-weight: 500;
-        width: 100%;
-        cursor: pointer;
-    }}
-    
-    /* Comparação */
-    .comparison-card {{
-        background: {C['surface']};
-        border-radius: 16px;
-        padding: 1rem;
-        margin: 0.5rem 0;
-        border: 1px solid {C['border']};
-    }}
-    
-    .comparison-value {{ font-size: 1.3rem; font-weight: 800; color: {C['primary']}; }}
-    .comparison-label {{ font-size: 0.65rem; color: {C['text_muted']}; text-transform: uppercase; }}
-    
-    /* Insight box */
-    .insight-box {{
-        background: rgba(255,77,0,0.08);
-        border-left: 3px solid {C['primary']};
-        padding: 1rem;
-        border-radius: 12px;
-        margin: 0.5rem 0;
-        font-size: 0.85rem;
-    }}
-    
-    /* Progress bar */
-    .progress-track {{ background: rgba(0,0,0,0.1); border-radius: 99px; height: 6px; overflow: hidden; }}
-    .progress-fill {{ height: 100%; border-radius: 99px; background: {C['primary']}; transition: width 0.5s; }}
-    
-    /* Títulos */
-    h1 {{ font-size: 1.8rem; font-weight: 800; margin-bottom: 1rem; color: {C['text']}; }}
-    h2 {{ font-size: 1.3rem; font-weight: 700; margin: 1rem 0 0.5rem; color: {C['text']}; }}
-    h3 {{ font-size: 1.1rem; font-weight: 600; margin: 0.5rem 0; color: {C['text']}; }}
-    
-    /* Esconder elementos padrão */
     #MainMenu, header, footer, .stDeployButton {{ display: none; }}
     
-    /* Responsivo mobile */
     @media (max-width: 768px) {{
-        .card, .kpi-card {{ padding: 1rem; }}
-        .kpi-value {{ font-size: 1.4rem; }}
-        .grid-2, .grid-3, .grid-4 {{ gap: 0.75rem; }}
-        h1 {{ font-size: 1.5rem; }}
-    }}
-    
-    @media (max-width: 480px) {{
-        .kpi-value {{ font-size: 1.2rem; }}
-        .btn-primary, .btn-secondary {{ padding: 0.5rem 1rem; }}
+        .kpi-value {{ font-size: 1.3rem; }}
+        .card {{ padding: 1rem; }}
     }}
     </style>
     """
@@ -162,22 +92,160 @@ def aplicar_css():
 # -----------------------------------------------------------------------------
 # 3. FUNÇÕES AUXILIARES
 # -----------------------------------------------------------------------------
-def card(content, kpi=False):
-    cls = "kpi-card" if kpi else "card"
-    return f'<div class="{cls}">{content}</div>'
+def criar_conta_simulada(nome, email, senha, idade, altura, peso, meta_peso, sexo):
+    """Simula criação de conta (modo offline/demo)"""
+    st.session_state["usuario"] = {
+        "nome": nome, "email": email, "idade": idade,
+        "altura": altura, "peso_atual": peso, "peso_meta": meta_peso, "sexo": sexo,
+        "is_premium": False, "criado_em": date.today().isoformat()
+    }
+    return True
 
-def kpi(label, value, sub=None):
-    sub_html = f'<div class="kpi-sub">{sub}</div>' if sub else ""
-    return f'<div><div class="kpi-label">{label}</div><div class="kpi-value">{value}</div>{sub_html}</div>'
+def login_simulado(email, senha):
+    """Simula login com conta demo"""
+    if email == "demo@emagresim.com" and senha == "demo123":
+        st.session_state["usuario"] = {
+            "nome": "Usuário Demo", "email": email, "idade": 30,
+            "altura": 1.75, "peso_atual": 80.0, "peso_meta": 70.0,
+            "sexo": "M", "is_premium": False
+        }
+        return True
+    return False
 
-def insight(text):
-    return f'<div class="insight-box">💡 {text}</div>'
-
-def progress_bar(pct):
-    return f'<div class="progress-track"><div class="progress-fill" style="width:{pct}%"></div></div>'
+def gerar_grafico_peso(pesos: list, meta: float):
+    """Gera gráfico de evolução de peso"""
+    if not pesos:
+        # Dados simulados
+        datas = [date.today() - timedelta(days=x) for x in range(30, -1, -1)]
+        pesos_sim = [88 - i * 0.15 + random.uniform(-0.5, 0.5) for i in range(31)]
+        df = pd.DataFrame({"data": datas, "peso": pesos_sim})
+    else:
+        df = pd.DataFrame(pesos)
+        df["data"] = pd.to_datetime(df["data"])
+    
+    fig = go.Figure()
+    fig.add_trace(go.Scatter(
+        x=df["data"], y=df["peso"],
+        mode="lines+markers", name="Peso",
+        line=dict(color="#FF4D00", width=3),
+        marker=dict(size=6, color="#FF4D00"),
+        fill="tozeroy", fillcolor="rgba(255,77,0,0.1)"
+    ))
+    fig.add_hline(y=meta, line_dash="dash", line_color="#22C55E", 
+                  annotation_text=f"Meta: {meta}kg", annotation_font_color="#22C55E")
+    fig.update_layout(
+        paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)",
+        xaxis_title="Data", yaxis_title="Peso (kg)",
+        height=350, margin=dict(l=20, r=20, t=40, b=20)
+    )
+    return fig
 
 # -----------------------------------------------------------------------------
-# 4. PÁGINA DEMONSTRAÇÃO (ADRIANO)
+# 4. PÁGINA DE CRIAÇÃO DE CONTA (COMPLETA)
+# -----------------------------------------------------------------------------
+def pagina_criar_conta():
+    C = get_tema()
+    st.markdown("<h1 style='text-align:center;'>🔥 Criar Conta</h1>", unsafe_allow_html=True)
+    
+    col1, col2, col3 = st.columns([1, 2, 1])
+    with col2:
+        with st.form("form_criar_conta"):
+            nome = st.text_input("Nome completo", placeholder="Seu nome")
+            email = st.text_input("E-mail", placeholder="seu@email.com")
+            senha = st.text_input("Senha", type="password", placeholder="••••••••")
+            confirmar_senha = st.text_input("Confirmar senha", type="password", placeholder="••••••••")
+            
+            st.markdown("---")
+            st.markdown("### 📊 Dados pessoais")
+            
+            col_a, col_b = st.columns(2)
+            with col_a:
+                idade = st.number_input("Idade", 18, 100, 30)
+                altura = st.number_input("Altura (m)", 1.40, 2.50, 1.75, 0.01)
+            with col_b:
+                peso = st.number_input("Peso atual (kg)", 30.0, 300.0, 80.0, 0.1)
+                meta_peso = st.number_input("Meta de peso (kg)", 40.0, 200.0, 70.0, 0.5)
+            
+            sexo = st.selectbox("Sexo", ["Masculino", "Feminino"])
+            sexo_code = "M" if sexo == "Masculino" else "F"
+            
+            if st.form_submit_button("🔥 Criar minha conta", use_container_width=True):
+                if not nome or not email or not senha:
+                    st.error("Preencha todos os campos")
+                elif senha != confirmar_senha:
+                    st.error("As senhas não coincidem")
+                else:
+                    criar_conta_simulada(nome, email, senha, idade, altura, peso, meta_peso, sexo_code)
+                    st.success("✅ Conta criada com sucesso!")
+                    st.balloons()
+                    st.query_params["pagina"] = "dashboard"
+                    st.rerun()
+        
+        st.markdown("---")
+        if st.button("← Voltar para login", use_container_width=True):
+            st.query_params.clear()
+            st.rerun()
+
+# -----------------------------------------------------------------------------
+# 5. PÁGINA DASHBOARD (COM GRÁFICOS)
+# -----------------------------------------------------------------------------
+def pagina_dashboard():
+    C = get_tema()
+    usuario = st.session_state.get("usuario", {})
+    
+    if not usuario:
+        st.warning("Nenhum usuário logado. Faça login ou crie uma conta.")
+        if st.button("Ir para login"):
+            st.query_params.clear()
+            st.rerun()
+        return
+    
+    st.markdown(f"<h1>📊 Olá, {usuario.get('nome', 'Usuário')}!</h1>", unsafe_allow_html=True)
+    
+    # KPIs em grid responsivo
+    col1, col2, col3, col4 = st.columns(4)
+    with col1:
+        imc = usuario["peso_atual"] / (usuario["altura"] ** 2)
+        st.metric("Peso Atual", f"{usuario['peso_atual']:.1f} kg", f"Meta: {usuario['peso_meta']:.0f} kg")
+    with col2:
+        st.metric("IMC", f"{imc:.1f}", "Obesidade" if imc > 30 else "Sobrepeso" if imc > 25 else "Normal")
+    with col3:
+        tmb = (10 * usuario["peso_atual"]) + (6.25 * usuario["altura"] * 100) - (5 * usuario["idade"])
+        tmb = tmb + 5 if usuario.get("sexo") == "M" else tmb - 161
+        st.metric("TMB", f"{int(tmb)} kcal", "Basal")
+    with col4:
+        plano = "Premium ⭐" if usuario.get("is_premium") else "Grátis"
+        st.metric("Plano", plano)
+    
+    # Gráfico de evolução
+    st.markdown("### 📈 Evolução do Peso")
+    fig = gerar_grafico_peso([], usuario["peso_meta"])
+    st.plotly_chart(fig, use_container_width=True)
+    
+    # Previsão
+    kg_restantes = usuario["peso_atual"] - usuario["peso_meta"]
+    if kg_restantes > 0:
+        ritmo = 0.5
+        semanas = kg_restantes / ritmo
+        data_estimada = date.today() + timedelta(days=int(semanas * 7))
+        st.info(f"📅 **Previsão:** No ritmo de -{ritmo}kg/semana, você atinge sua meta em **{data_estimada.strftime('%d/%m/%Y')}**")
+    
+    # Recomendações
+    with st.expander("💡 Recomendações Personalizadas", expanded=False):
+        st.markdown(f"""
+        - 🥩 **Proteína:** Priorize {int(usuario['peso_atual'] * 1.6)}g/dia
+        - 💧 **Hidratação:** Beba 3L de água por dia
+        - 🚶 **Movimento:** Caminhada leve 30min, 5x por semana
+        """)
+    
+    # Botão de logout
+    if st.button("🚪 Sair", use_container_width=True):
+        st.session_state.clear()
+        st.query_params.clear()
+        st.rerun()
+
+# -----------------------------------------------------------------------------
+# 6. PÁGINA DEMONSTRAÇÃO (ADRIANO)
 # -----------------------------------------------------------------------------
 def pagina_demo():
     C = get_tema()
@@ -187,31 +255,36 @@ def pagina_demo():
         st.query_params.clear()
         st.rerun()
     
-    adriano = {"name": "Adriano", "age": 39, "height": 1.75, "current_weight": 144.0, "target_weight": 90.0}
+    adriano = {"nome": "Adriano", "idade": 39, "altura": 1.75, "peso_atual": 144.0, "peso_meta": 90.0, "sexo": "M"}
     
-    # Grid 3 colunas responsivo
+    # KPIs
     col1, col2, col3 = st.columns(3)
     with col1:
-        imc = adriano["current_weight"] / (adriano["height"] ** 2)
-        st.metric("Peso Atual", f"{adriano['current_weight']:.1f} kg", f"Meta: {adriano['target_weight']:.0f} kg")
+        imc = adriano["peso_atual"] / (adriano["altura"] ** 2)
+        st.metric("Peso Atual", f"{adriano['peso_atual']:.1f} kg", f"Meta: {adriano['peso_meta']:.0f} kg")
         st.metric("IMC", f"{imc:.1f}", "Obesidade Grave (Grau III)")
     with col2:
-        tmb = (10 * adriano["current_weight"]) + (6.25 * adriano["height"] * 100) - (5 * adriano["age"]) + 5
+        tmb = (10 * adriano["peso_atual"]) + (6.25 * adriano["altura"] * 100) - (5 * adriano["idade"]) + 5
         st.metric("TMB", f"{int(tmb)} kcal/dia")
         st.metric("Meta calórica", f"{int(tmb - 500)} kcal/dia")
     with col3:
-        st.metric("Idade", f"{adriano['age']} anos")
-        st.metric("Altura", f"{adriano['height']:.2f} m")
+        st.metric("Idade", f"{adriano['idade']} anos")
+        st.metric("Altura", f"{adriano['altura']:.2f} m")
     
-    # Projeção
+    # Gráfico
+    st.markdown("### 📈 Projeção de Emagrecimento")
+    fig = gerar_grafico_peso([], adriano["peso_meta"])
+    st.plotly_chart(fig, use_container_width=True)
+    
+    # Previsão
+    kg_restantes = adriano["peso_atual"] - adriano["peso_meta"]
     ritmo = 0.8
-    kg_restantes = adriano["current_weight"] - adriano["target_weight"]
     semanas = kg_restantes / ritmo
     data_estimada = date.today() + timedelta(days=int(semanas * 7))
-    st.info(f"📅 **Previsão:** No ritmo de -{ritmo}kg/semana, você chega em {adriano['target_weight']:.0f} kg em **{data_estimada.strftime('%d/%m/%Y')}**")
+    st.info(f"📅 No ritmo de -{ritmo}kg/semana, você chega em {adriano['peso_meta']:.0f} kg em **{data_estimada.strftime('%d/%m/%Y')}**")
     
     # Recomendações
-    with st.expander("💡 Recomendações Personalizadas", expanded=True):
+    with st.expander("💡 Recomendações", expanded=True):
         st.markdown("""
         - 🥩 **Proteína:** Priorize 2g/kg (≈288g/dia)
         - 💧 **Hidratação:** Beba 3L de água por dia
@@ -219,15 +292,15 @@ def pagina_demo():
         - ⚠️ **Aviso:** Consulte um médico antes de começar
         """)
     
-    # Metas intermediárias
+    # Metas
     st.markdown("### 📊 Metas Intermediárias")
     metas = [
-        ("Obesidade Grau I (IMC 35)", 35 * (adriano["height"] ** 2)),
-        ("Sobrepeso (IMC 30)", 30 * (adriano["height"] ** 2)),
-        ("Saudável (IMC 25)", 25 * (adriano["height"] ** 2)),
+        ("Obesidade Grau I (IMC 35)", 35 * (adriano["altura"] ** 2)),
+        ("Sobrepeso (IMC 30)", 30 * (adriano["altura"] ** 2)),
+        ("Saudável (IMC 25)", 25 * (adriano["altura"] ** 2)),
     ]
     for nome, peso_meta in metas:
-        kg_faltam = adriano["current_weight"] - peso_meta
+        kg_faltam = adriano["peso_atual"] - peso_meta
         if kg_faltam > 0:
             st.write(f"- **{nome}:** perder {kg_faltam:.0f} kg (chegar a {peso_meta:.0f} kg)")
     
@@ -237,12 +310,12 @@ def pagina_demo():
             st.query_params["pagina"] = "criar_conta"
             st.rerun()
     with col_b2:
-        if st.button("📊 Ver Ranking", use_container_width=True):
-            st.query_params["pagina"] = "ranking"
+        if st.button("📊 Ver Demo", use_container_width=True):
+            st.query_params["pagina"] = "dashboard"
             st.rerun()
 
 # -----------------------------------------------------------------------------
-# 5. PÁGINA LOGIN
+# 7. PÁGINA LOGIN
 # -----------------------------------------------------------------------------
 def pagina_login():
     st.markdown("<h1 style='text-align:center;'>🔥 EmagreSim</h1>", unsafe_allow_html=True)
@@ -250,10 +323,15 @@ def pagina_login():
     col1, col2, col3 = st.columns([1, 2, 1])
     with col2:
         with st.form("login_form"):
-            email = st.text_input("E-mail", placeholder="seu@email.com")
-            senha = st.text_input("Senha", type="password", placeholder="••••••••")
+            email = st.text_input("E-mail", placeholder="seu@email.com", value="demo@emagresim.com")
+            senha = st.text_input("Senha", type="password", placeholder="••••••••", value="demo123")
             if st.form_submit_button("Entrar", use_container_width=True):
-                st.info("Login simulado - modo demo disponível")
+                if login_simulado(email, senha):
+                    st.success("✅ Login realizado!")
+                    st.query_params["pagina"] = "dashboard"
+                    st.rerun()
+                else:
+                    st.error("Email ou senha inválidos. Use demo@emagresim.com / demo123")
         
         st.markdown("---")
         col_a, col_b = st.columns(2)
@@ -267,7 +345,7 @@ def pagina_login():
                 st.rerun()
 
 # -----------------------------------------------------------------------------
-# 6. MAIN
+# 8. MAIN
 # -----------------------------------------------------------------------------
 def main():
     aplicar_css()
@@ -277,10 +355,9 @@ def main():
     if pagina == "demo":
         pagina_demo()
     elif pagina == "criar_conta":
-        st.info("Tela de criação de conta em desenvolvimento")
-        if st.button("← Voltar"):
-            st.query_params.clear()
-            st.rerun()
+        pagina_criar_conta()
+    elif pagina == "dashboard":
+        pagina_dashboard()
     else:
         pagina_login()
 
