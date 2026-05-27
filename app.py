@@ -1,15 +1,11 @@
-# app.py - EmagreSim com Avatar Central (maduro)
+# app.py - EmagreSim v16.0 (SIMPLES E FUNCIONAL - SEM AVATAR)
 import streamlit as st
 import random
 from datetime import datetime
 
-from avatar_central import (
-    tela_avatar, mostrar_avatar, avatar_evoluir, avatar_mensagem, ESTADOS
-)
-
 st.set_page_config(
-    page_title="EmagreSim | Recomeço",
-    page_icon="🌅",
+    page_title="EmagreSim | Transformação",
+    page_icon="🔥",
     layout="wide",
 )
 
@@ -59,7 +55,7 @@ def pagina_login():
         col_a, col_b = st.columns(2)
         with col_a:
             if st.button("📝 Criar conta", use_container_width=True):
-                st.session_state["pagina"] = "avatar"
+                st.session_state["pagina"] = "criar_conta"
                 st.rerun()
         with col_b:
             if st.button("🧪 Modo demonstração", use_container_width=True):
@@ -68,8 +64,6 @@ def pagina_login():
                     "idade": 39, "altura": 1.75, "peso_atual": 144.0, "peso_meta": 90.0,
                     "sexo": "M"
                 }
-                # Avatar padrão para demo
-                st.session_state["avatar"] = ESTADOS["despertar"]
                 st.session_state["pagina"] = "dashboard"
                 st.rerun()
 
@@ -77,44 +71,36 @@ def pagina_login():
 def pagina_criar_conta():
     st.markdown("<h1 style='text-align:center;'>🔥 Criar Conta</h1>", unsafe_allow_html=True)
     
-    if "avatar" in st.session_state:
-        col1, col2 = st.columns([1, 2])
-        with col1:
-            mostrar_avatar()
-            if st.button("🎨 Escolher outro símbolo", use_container_width=True):
-                st.session_state["pagina"] = "avatar"
+    with st.form("form_criar_conta"):
+        nome = st.text_input("Nome completo", placeholder="Seu nome")
+        email = st.text_input("E-mail", placeholder="seu@email.com")
+        senha = st.text_input("Senha", type="password", placeholder="••••••••")
+        
+        col_a, col_b = st.columns(2)
+        with col_a:
+            idade = st.number_input("Idade", 18, 100, 30)
+            altura = st.number_input("Altura (m)", 1.40, 2.50, 1.75, 0.01)
+        with col_b:
+            peso = st.number_input("Peso atual (kg)", 30.0, 300.0, 80.0, 0.1)
+            meta_peso = st.number_input("Meta de peso (kg)", 40.0, 200.0, 70.0, 0.5)
+        
+        sexo = st.selectbox("Sexo", ["Masculino", "Feminino"])
+        
+        if st.form_submit_button("🔥 Criar minha conta", use_container_width=True):
+            if nome and email and senha:
+                st.session_state["usuario"] = {
+                    "nome": nome, "email": email, "idade": idade,
+                    "altura": altura, "peso_atual": peso, "peso_meta": meta_peso,
+                    "sexo": "M" if sexo == "Masculino" else "F"
+                }
+                st.success(f"✅ Conta criada com sucesso, {nome}!")
+                st.balloons()
+                st.session_state["pagina"] = "dashboard"
                 st.rerun()
-        with col2:
-            with st.form("form_criar_conta"):
-                nome = st.text_input("Nome completo")
-                email = st.text_input("E-mail")
-                senha = st.text_input("Senha", type="password")
-                
-                col_a, col_b = st.columns(2)
-                with col_a:
-                    idade = st.number_input("Idade", 18, 100, 30)
-                    altura = st.number_input("Altura (m)", 1.40, 2.50, 1.75, 0.01)
-                with col_b:
-                    peso = st.number_input("Peso atual (kg)", 30.0, 300.0, 80.0, 0.1)
-                    meta_peso = st.number_input("Meta de peso (kg)", 40.0, 200.0, 70.0, 0.5)
-                
-                sexo = st.selectbox("Sexo", ["Masculino", "Feminino"])
-                
-                if st.form_submit_button("🔥 Criar minha conta", use_container_width=True):
-                    if nome and email and senha:
-                        st.session_state["usuario"] = {
-                            "nome": nome, "email": email, "idade": idade,
-                            "altura": altura, "peso_atual": peso, "peso_meta": meta_peso,
-                            "sexo": "M" if sexo == "Masculino" else "F"
-                        }
-                        st.success(f"✅ Conta criada com sucesso, {nome}!")
-                        st.session_state["pagina"] = "dashboard"
-                        st.rerun()
-    else:
-        st.info("🌅 Primeiro, escolha seu símbolo!")
-        if st.button("Escolher Símbolo", use_container_width=True):
-            st.session_state["pagina"] = "avatar"
-            st.rerun()
+    
+    if st.button("← Voltar", use_container_width=True):
+        st.session_state["pagina"] = "login"
+        st.rerun()
 
 # PÁGINA DASHBOARD
 def pagina_dashboard():
@@ -126,25 +112,9 @@ def pagina_dashboard():
             st.rerun()
         return
     
-    col_avatar, col_titulo = st.columns([1, 3])
-    with col_avatar:
-        mostrar_avatar()
-    with col_titulo:
-        st.markdown(f"<h1>Olá, {usuario['nome']}!</h1>", unsafe_allow_html=True)
-        st.markdown(f"<p>{mensagem_bom_dia()}</p>", unsafe_allow_html=True)
-    
-    # Botões de interação
-    col_b1, col_b2, col_b3 = st.columns(3)
-    with col_b1:
-        if st.button("🌱 Estou progredindo", use_container_width=True):
-            if avatar_evoluir():
-                pass
-    with col_b2:
-        if st.button("🫂 Preciso de apoio", use_container_width=True):
-            avatar_mensagem("apoio")
-    with col_b3:
-        if st.button("👂 Me alerta", use_container_width=True):
-            avatar_mensagem("alerta")
+    # Cabeçalho
+    st.markdown(f"<h1>Olá, {usuario['nome']}!</h1>", unsafe_allow_html=True)
+    st.markdown(f"<p>{mensagem_bom_dia()}</p>", unsafe_allow_html=True)
     
     # KPIs
     col1, col2, col3, col4 = st.columns(4)
@@ -158,6 +128,7 @@ def pagina_dashboard():
     with col4:
         st.metric("Plano", "Grátis")
     
+    # Previsão
     kg_restantes = usuario["peso_atual"] - usuario["peso_meta"]
     if kg_restantes > 0:
         st.info(f"📅 **Previsão:** Faltam {kg_restantes:.0f} kg para atingir sua meta!")
@@ -169,8 +140,35 @@ def pagina_dashboard():
             usuario["peso_atual"] = peso_hoje
             st.success(f"✅ Peso registrado: {peso_hoje:.1f} kg")
             if peso_hoje <= usuario["peso_meta"]:
-                avatar_mensagem("conquista")
+                st.balloons()
+                st.toast("🎉 PARABÉNS! Você atingiu sua meta!", icon="🏆")
             st.rerun()
+    
+    # Botão de apoio
+    if st.button("💙 Preciso de apoio", use_container_width=True):
+        st.toast("💙 Você não está sozinho. Um dia de cada vez.", icon="🤗")
+    
+    # Desafio da semana
+    with st.expander("🏆 Desafio da Semana", expanded=True):
+        desafios = [
+            "💧 Beba 2L de água por 5 dias",
+            "🥚 Registre proteína em todas as refeições",
+            "🚶 Caminhe 30min por dia durante 4 dias",
+            "😴 Durma 7h+ por 5 dias",
+        ]
+        desafio = random.choice(desafios)
+        st.markdown(f"**{desafio}** ⚡ +100 XP")
+        st.progress(0.3, text="Progresso: 2/5 dias")
+    
+    # Dica do dia
+    with st.expander("💡 Dica do dia", expanded=False):
+        dicas = [
+            "Beba um copo de água antes de cada refeição.",
+            "Durma 7-8h por noite para regular os hormônios.",
+            "Inclua proteína em todas as refeições para mais saciedade.",
+            "Não pule o café da manhã – ele ativa seu metabolismo.",
+        ]
+        st.info(random.choice(dicas))
     
     # Botão sair
     if st.button("🚪 Sair", use_container_width=True):
@@ -187,8 +185,6 @@ def main():
     
     if pagina == "login":
         pagina_login()
-    elif pagina == "avatar":
-        tela_avatar()
     elif pagina == "criar_conta":
         pagina_criar_conta()
     elif pagina == "dashboard":
