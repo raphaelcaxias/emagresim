@@ -1,7 +1,16 @@
 # -*- coding: utf-8 -*-
 """
-EmagreSim v5.1 - Behavioral Health OS
-Corrigido: erro de cache com imagens PIL
+EmagreSim v6.0 - Behavioral Health OS
+Arquivo único refatorado com:
+- Engines de domínio (Consistency, XP, Analytics)
+- Camada de serviços
+- Validação real de dados
+- Event tracking (telemetria)
+- Cache seletivo
+- Splash screen corrigida
+- Reset com confirmação dupla
+- Requests com retry
+- Fórmula de consistência realista
 """
 
 import streamlit as st
@@ -16,21 +25,25 @@ from contextlib import contextmanager
 from dataclasses import dataclass
 from typing import List, Dict, Optional, Tuple
 from scipy import stats
-import plotly.graph_objects as go
 import plotly.express as px
 import requests
 from io import BytesIO
 from PIL import Image
+from requests.adapters import HTTPAdapter
+from urllib3.util.retry import Retry
 
 # -----------------------------------------------------------------------------
-# 1. CONFIGURACOES GLOBAIS
+# 1. CONFIGURAÇÕES GLOBAIS
 # -----------------------------------------------------------------------------
 IS_DEV = os.environ.get("EMAGRESIM_ENV", "dev") == "dev"
 CACHE_TTL = 5 if IS_DEV else 120
-DB_PATH = "emagresim_v5.db"
+DB_PATH = "emagresim_v6.db"
 USER_ID = 1
 
-logging.basicConfig(level=logging.INFO, format="%(asctime)s | %(levelname)-8s | %(message)s")
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s | %(levelname)-8s | %(message)s"
+)
 logger = logging.getLogger("emagresim")
 
 st.set_page_config(
@@ -41,30 +54,7 @@ st.set_page_config(
 )
 
 # -----------------------------------------------------------------------------
-# 2. CARREGAMENTO DAS IMAGENS DO GITHUB (SEM CACHE PARA EVITAR ERRO)
-# -----------------------------------------------------------------------------
-def load_image_from_url(url: str) -> Optional[Image.Image]:
-    """Carrega uma imagem a partir de um URL raw do GitHub. Sem cache."""
-    try:
-        response = requests.get(url, timeout=10)
-        if response.status_code == 200:
-            return Image.open(BytesIO(response.content))
-    except Exception as e:
-        logger.warning(f"Erro ao carregar imagem {url}: {e}")
-    return None
-
-# URLs raw das imagens
-LOGO_URL = "https://raw.githubusercontent.com/raphaelcaxias/emagresim/main/logo.png"
-ICON_URL = "https://raw.githubusercontent.com/raphaelcaxias/emagresim/main/icon.png"
-SPLASH_URL = "https://raw.githubusercontent.com/raphaelcaxias/emagresim/main/splash.png"
-
-# Carrega as imagens (sem cache)
-logo_img = load_image_from_url(LOGO_URL)
-icon_img = load_image_from_url(ICON_URL)
-splash_img = load_image_from_url(SPLASH_URL)
-
-# -----------------------------------------------------------------------------
-# 3. DESIGN SYSTEM
+# 2. DESIGN SYSTEM
 # -----------------------------------------------------------------------------
 @dataclass
 class C:
@@ -88,7 +78,6 @@ CUSTOM_CSS = f"""
 @import url('https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800;900&display=swap');
 
 .stApp {{ background: {C.BG} !important; }}
-.stApp > header {{ background: transparent !important; }}
 section[data-testid="stSidebar"] {{
     background: {C.SURFACE} !important;
     border-right: 1px solid {C.BORDER};
@@ -160,16 +149,60 @@ div[data-testid="stMetric"] label {{ color: {C.MUTED} !important; font-size: .7r
 st.markdown(CUSTOM_CSS, unsafe_allow_html=True)
 
 # -----------------------------------------------------------------------------
-# 4. SPLASH SCREEN (opcional, sem cache)
+# 3. IMAGENS E ASSETS (COM RETRY E FALLBACK)
+# -----------------------------------------------------------------------------
+def get_session_with_retries() -> requests.Session:
+    session = requests.Session()
+    retries = Retry(
+        total=3,
+        backoff_factor=0.5,
+        status_forcelist=[500, 502, 503, 504]
+    )
+    session.mount('https://', HTTPAdapter(max_retries=retries))
+    return session
+
+def get_fallback_image() -> Optional[Image.Image]:
+    """Cria uma imagem simples de fallback (círculo com texto)"""
+    try:
+        img = Image.new('RGB', (200, 200), color=C.CARD)
+        return img
+    except:
+        return None
+
+def load_image_from_url(url: str) -> Optional[Image.Image]:
+    """Carrega imagem com retry e fallback. SEM CACHE (evita pickle error)"""
+    session = get_session_with_retries()
+    try:
+        response = session.get(url, timeout=10)
+        if response.status_code == 200:
+            return Image.open(BytesIO(response.content))
+    except Exception as e:
+        logger.warning(f"Erro ao carregar {url}: {e}")
+    return get_fallback_image()
+
+# URLs raw
+LOGO_URL = "https://raw.githubusercontent.com/raphaelcaxias/emagresim/main/logo.png"
+ICON_URL = "https://raw.githubusercontent.com/raphaelcaxias/emagresim/main/icon.png"
+SPLASH_URL = "https://raw.githubusercontent.com/raphaelcaxias/emagresim/main/splash.png"
+
+logo_img = load_image_from_url(LOGO_URL)
+icon_img = load_image_from_url(ICON_URL)
+splash_img = load_image_from_url(SPLASH_URL)
+
+# -----------------------------------------------------------------------------
+# 4. SPLASH SCREEN CORRIGIDA (SEM RERUN INFINITO)
 # -----------------------------------------------------------------------------
 if splash_img and "splash_shown" not in st.session_state:
     with st.container():
         st.image(splash_img, use_container_width=True)
         st.session_state["splash_shown"] = True
+        # Pequeno delay visual antes de limpar
+        import time
+        time.sleep(0.5)
         st.rerun()
 
 # -----------------------------------------------------------------------------
-# 5. DATABASE
+# 5. DATABASE LAYER
 # -----------------------------------------------------------------------------
 SCHEMA_SQL = """
 CREATE TABLE IF NOT EXISTS users (
@@ -224,8 +257,17 @@ CREATE TABLE IF NOT EXISTS xp_logs (
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE
 );
+CREATE TABLE IF NOT EXISTS user_events (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id INT NOT NULL,
+    event_name TEXT NOT NULL,
+    metadata TEXT,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE
+);
 CREATE INDEX IF NOT EXISTS idx_checkins ON daily_checkins(user_id, date DESC);
 CREATE INDEX IF NOT EXISTS idx_weights ON weight_logs(user_id, date DESC);
+CREATE INDEX IF NOT EXISTS idx_events ON user_events(user_id, created_at DESC);
 """
 
 @contextmanager
@@ -246,13 +288,16 @@ def db():
 def init_db():
     with db() as conn:
         conn.executescript(SCHEMA_SQL)
+    logger.info("DB initialized")
 
 def seed_if_empty():
     with db() as conn:
         count = conn.execute("SELECT COUNT(*) FROM daily_checkins").fetchone()[0]
         if count > 0:
             return
-        conn.execute("INSERT INTO users VALUES (1,'Usuario Demo',30,'M',1.78,88.0,72.0,'moderado',CURRENT_TIMESTAMP)")
+        conn.execute(
+            "INSERT INTO users VALUES (1,'Usuario Demo',30,'M',1.78,88.0,72.0,'moderado',CURRENT_TIMESTAMP)"
+        )
         end_date = date.today() - timedelta(days=1)
         dates = [end_date - timedelta(days=x) for x in range(180)][::-1]
         rng = np.random.default_rng(42)
@@ -270,125 +315,85 @@ def seed_if_empty():
         conn.executemany("INSERT INTO weight_logs(user_id,date,weight,body_fat,lean_mass) VALUES(?,?,?,?,?)", weights)
         conn.executemany("INSERT INTO daily_checkins(user_id,date,calories_consumed,water_ml,sleep_hours,workout_minutes,mood_score,consistency_score,emotional_state,discipline_score) VALUES(?,?,?,?,?,?,?,?,?,?)", checkins)
         conn.execute("INSERT INTO xp_logs(user_id,amount,source) VALUES(1,500,'seed')")
+    logger.info("Seed: 180 days generated")
 
 # -----------------------------------------------------------------------------
-# 6. DATA ACCESS (com cache apenas para dados, não para imagens)
+# 6. DOMAIN ENGINES
 # -----------------------------------------------------------------------------
-@st.cache_data(ttl=CACHE_TTL)
-def load_all(uid: int = USER_ID) -> Tuple[Dict, pd.DataFrame, pd.DataFrame]:
-    with db() as conn:
-        user_row = conn.execute("SELECT * FROM users WHERE id=?", (uid,)).fetchone()
-        if not user_row:
-            raise ValueError(f"User {uid} not found")
-        user = dict(user_row)
-        weights = pd.read_sql("SELECT * FROM weight_logs WHERE user_id=? ORDER BY date", conn, params=(uid,), parse_dates=["date"])
-        checkins = pd.read_sql("SELECT * FROM daily_checkins WHERE user_id=? ORDER BY date", conn, params=(uid,), parse_dates=["date"])
-    return user, weights, checkins
+class DataValidator:
+    @staticmethod
+    def validate_weight(weight: float, body_fat: float, lean_mass: float) -> Tuple[bool, str]:
+        if weight < 30 or weight > 300:
+            return False, "Peso fora do range fisiológico (30-300 kg)"
+        if body_fat < 3 or body_fat > 60:
+            return False, "Gordura corporal fora do range (3-60%)"
+        if lean_mass < 20 or lean_mass > 120:
+            return False, "Massa magra fora do range (20-120 kg)"
+        
+        fat_mass = weight * body_fat / 100
+        expected = lean_mass + fat_mass
+        if weight > 0 and abs(expected - weight) / weight > 0.08:
+            return False, f"Inconsistência: massa magra({lean_mass}) + gordura({fat_mass:.1f}) ≠ peso({weight:.1f})"
+        return True, ""
 
-@st.cache_data(ttl=CACHE_TTL)
-def load_xp(uid: int = USER_ID) -> int:
-    with db() as conn:
-        row = conn.execute("SELECT COALESCE(SUM(amount),0) AS total FROM xp_logs WHERE user_id=?", (uid,)).fetchone()
-    return int(row["total"]) if row else 0
+class ConsistencyEngine:
+    @staticmethod
+    def calculate(calories: float, water_ml: int, sleep_hours: float, 
+                  workout_minutes: int, mood_score: int) -> int:
+        """Fórmula realista de consistência (0-100)"""
+        # Calorias: 1800 é ideal, desvio máximo 800kcal
+        cal_score = max(0, 100 - abs(calories - 1800) / 18)
+        cal_score = min(cal_score, 100)
+        
+        # Água: 2000ml baseline, 3000ml excelente
+        water_score = min(water_ml / 35, 100)
+        
+        # Sono: 7h baseline, 8h+ excelente
+        sleep_score = min(sleep_hours / 8.5 * 100, 100)
+        
+        # Treino: 30min baseline, 60min excelente
+        workout_score = min(workout_minutes / 45 * 100, 100)
+        
+        # Humor: influência moderada (10-100)
+        mood_score_norm = mood_score * 10
+        
+        # Ponderadores realistas
+        consistency = (
+            cal_score * 0.30 +
+            water_score * 0.15 +
+            sleep_score * 0.20 +
+            workout_score * 0.25 +
+            mood_score_norm * 0.10
+        )
+        return int(np.clip(consistency, 0, 100))
 
-def save_checkin(uid: int, data: dict) -> int:
-    with db() as conn:
-        existing = conn.execute("SELECT id FROM daily_checkins WHERE user_id=? AND date=?", (uid, data["date"])).fetchone()
-        if existing:
-            set_clause = ", ".join(f"{k}=?" for k in data)
-            conn.execute(f"UPDATE daily_checkins SET {set_clause} WHERE user_id=? AND date=?", list(data.values()) + [uid, data["date"]])
-            xp = 0
-        else:
-            cols = ", ".join(data.keys())
-            placeholders = ", ".join("?" * len(data))
-            conn.execute(f"INSERT INTO daily_checkins(user_id,{cols}) VALUES(?,{placeholders})", [uid] + list(data.values()))
-            xp = 10
-            if data.get("consistency_score", 0) >= 80: xp += 20
-            if data.get("sleep_hours", 0) >= 8: xp += 40
-            if data.get("workout_minutes", 0) >= 30: xp += 15
-            conn.execute("INSERT INTO xp_logs(user_id,amount,source) VALUES(?,?,?)", (uid, xp, "checkin"))
-    st.cache_data.clear()
-    return xp
-
-def save_weight(uid: int, data: dict) -> int:
-    with db() as conn:
-        existing = conn.execute("SELECT id FROM weight_logs WHERE user_id=? AND date=?", (uid, data["date"])).fetchone()
-        if existing:
-            set_clause = ", ".join(f"{k}=?" for k in data)
-            conn.execute(f"UPDATE weight_logs SET {set_clause} WHERE user_id=? AND date=?", list(data.values()) + [uid, data["date"]])
-            xp = 0
-        else:
-            cols = ", ".join(data.keys())
-            placeholders = ", ".join("?" * len(data))
-            conn.execute(f"INSERT INTO weight_logs(user_id,{cols}) VALUES(?,{placeholders})", [uid] + list(data.values()))
-            xp = 20
-            conn.execute("INSERT INTO xp_logs(user_id,amount,source) VALUES(?,?,?)", (uid, xp, "weight"))
-        conn.execute("UPDATE users SET current_weight=? WHERE id=?", (data["weight"], uid))
-    st.cache_data.clear()
-    return xp
-
-def update_profile(uid: int, updates: dict):
-    with db() as conn:
-        set_clause = ", ".join(f"{k}=?" for k in updates)
-        conn.execute(f"UPDATE users SET {set_clause} WHERE id=?", list(updates.values()) + [uid])
-    st.cache_data.clear()
-
-def unlock_badge(uid: int, badge_key: str) -> bool:
-    with db() as conn:
-        try:
-            conn.execute("INSERT INTO user_badges(user_id,badge_key) VALUES(?,?)", (uid, badge_key))
-            return True
-        except sqlite3.IntegrityError:
-            return False
-
-def get_badges(uid: int) -> List[str]:
-    with db() as conn:
-        rows = conn.execute("SELECT badge_key FROM user_badges WHERE user_id=?", (uid,)).fetchall()
-        return [r["badge_key"] for r in rows]
-
-def reset_all(uid: int = USER_ID):
-    with db() as conn:
-        for tbl in ("xp_logs", "user_badges", "daily_checkins", "weight_logs", "users"):
-            conn.execute(f"DELETE FROM {tbl} WHERE {'user_id' if tbl != 'users' else 'id'}=?", (uid,))
-    seed_if_empty()
-    st.cache_data.clear()
-
-def export_data(uid: int) -> Tuple[pd.DataFrame, pd.DataFrame]:
-    with db() as conn:
-        checkins = pd.read_sql("SELECT * FROM daily_checkins WHERE user_id=? ORDER BY date", conn, params=(uid,))
-        weights = pd.read_sql("SELECT * FROM weight_logs WHERE user_id=? ORDER BY date", conn, params=(uid,))
-    return checkins, weights
-
-# -----------------------------------------------------------------------------
-# 7. CALCULOS E ANALYTICS
-# -----------------------------------------------------------------------------
-class Calc:
-    LEVELS = [("Lenda Fit", 6000), ("Elite", 3000), ("Atleta", 1500), ("Guerreiro", 500), ("Iniciante", 0)]
+class XPEngine:
+    @staticmethod
+    def calculate(consistency: int, sleep_hours: float, workout_minutes: int) -> int:
+        xp = 10  # base
+        if consistency >= 80:
+            xp += 20
+        if sleep_hours >= 8:
+            xp += 40
+        if workout_minutes >= 30:
+            xp += 15
+        return xp
     
     @staticmethod
-    def level_info(xp: int) -> Tuple[str, float, float]:
-        for i, (name, thr) in enumerate(Calc.LEVELS):
-            if xp >= thr:
-                next_thr = Calc.LEVELS[i-1][1] if i > 0 else thr + 2000
-                progress = (xp - thr) / max(next_thr - thr, 1) * 100
-                return name, next_thr, min(progress, 100)
-        return "Iniciante", 500, 0.0
-    
-    @staticmethod
-    def streak(scores: List[float], threshold: int = 70) -> int:
-        s = 0
-        for sc in reversed(scores):
-            if sc >= threshold:
-                s += 1
-            else:
-                break
-        return s
-    
-    @staticmethod
-    def bmi(weight: float, height: float) -> float:
-        return weight / (height ** 2)
+    def can_earn(uid: int, source: str) -> bool:
+        """Anti-fraude: cooldown de 12h para mesma fonte"""
+        with db() as conn:
+            row = conn.execute(
+                "SELECT MAX(created_at) FROM xp_logs WHERE user_id=? AND source=?",
+                (uid, source)
+            ).fetchone()
+            if row and row[0]:
+                last = datetime.fromisoformat(row[0])
+                hours_since = (datetime.now() - last).total_seconds() / 3600
+                return hours_since >= 12
+        return True
 
-class Analytics:
+class AnalyticsEngine:
     @staticmethod
     def scores(checkins: pd.DataFrame) -> Dict[str, float]:
         empty = {"adherence": 0.0, "discipline": 0.0, "recovery": 0.0, "momentum": 0.0, "stability": 0.0}
@@ -407,6 +412,152 @@ class Analytics:
             "momentum": round(momentum, 1),
             "stability": round(stability, 1),
         }
+    
+    @staticmethod
+    def streak(scores: List[float], threshold: int = 70) -> int:
+        s = 0
+        for sc in reversed(scores):
+            if sc >= threshold:
+                s += 1
+            else:
+                break
+        return s
+
+class LevelEngine:
+    LEVELS = [("Lenda Fit", 6000), ("Elite", 3000), ("Atleta", 1500), ("Guerreiro", 500), ("Iniciante", 0)]
+    
+    @staticmethod
+    def info(xp: int) -> Tuple[str, float, float]:
+        for i, (name, thr) in enumerate(LevelEngine.LEVELS):
+            if xp >= thr:
+                next_thr = LevelEngine.LEVELS[i-1][1] if i > 0 else thr + 2000
+                progress = (xp - thr) / max(next_thr - thr, 1) * 100
+                return name, next_thr, min(progress, 100)
+        return "Iniciante", 500, 0.0
+
+# -----------------------------------------------------------------------------
+# 7. SERVICES (COM EVENT TRACKING)
+# -----------------------------------------------------------------------------
+def track_event(uid: int, event_name: str, metadata: dict = None):
+    with db() as conn:
+        conn.execute(
+            "INSERT INTO user_events(user_id, event_name, metadata) VALUES(?,?,?)",
+            (uid, event_name, json.dumps(metadata or {}))
+        )
+    logger.info(f"Event: {event_name}")
+
+@st.cache_data(ttl=CACHE_TTL)
+def load_all(uid: int = USER_ID) -> Tuple[Dict, pd.DataFrame, pd.DataFrame]:
+    with db() as conn:
+        user_row = conn.execute("SELECT * FROM users WHERE id=?", (uid,)).fetchone()
+        if not user_row:
+            raise ValueError(f"User {uid} not found")
+        user = dict(user_row)
+        weights = pd.read_sql("SELECT * FROM weight_logs WHERE user_id=? ORDER BY date", conn, params=(uid,), parse_dates=["date"])
+        checkins = pd.read_sql("SELECT * FROM daily_checkins WHERE user_id=? ORDER BY date", conn, params=(uid,), parse_dates=["date"])
+    return user, weights, checkins
+
+@st.cache_data(ttl=CACHE_TTL)
+def load_xp(uid: int = USER_ID) -> int:
+    with db() as conn:
+        row = conn.execute("SELECT COALESCE(SUM(amount),0) AS total FROM xp_logs WHERE user_id=?", (uid,)).fetchone()
+    return int(row["total"]) if row else 0
+
+def save_checkin(uid: int, data: dict) -> int:
+    valid, msg = DataValidator.validate_weight(
+        data.get("weight", 80), 
+        data.get("body_fat", 20), 
+        data.get("lean_mass", 35)
+    ) if "weight" in data else (True, "")
+    if not valid:
+        st.error(f"❌ {msg}")
+        return 0
+    
+    with db() as conn:
+        existing = conn.execute("SELECT id FROM daily_checkins WHERE user_id=? AND date=?", (uid, data["date"])).fetchone()
+        if existing:
+            set_clause = ", ".join(f"{k}=?" for k in data)
+            conn.execute(f"UPDATE daily_checkins SET {set_clause} WHERE user_id=? AND date=?", list(data.values()) + [uid, data["date"]])
+            xp = 0
+        else:
+            cols = ", ".join(data.keys())
+            placeholders = ", ".join("?" * len(data))
+            conn.execute(f"INSERT INTO daily_checkins(user_id,{cols}) VALUES(?,{placeholders})", [uid] + list(data.values()))
+            xp = XPEngine.calculate(data.get("consistency_score", 0), data.get("sleep_hours", 0), data.get("workout_minutes", 0))
+            if XPEngine.can_earn(uid, "checkin"):
+                conn.execute("INSERT INTO xp_logs(user_id,amount,source) VALUES(?,?,?)", (uid, xp, "checkin"))
+            else:
+                xp = 0
+        track_event(uid, "checkin_saved", {"xp": xp, "date": data["date"]})
+    
+    st.cache_data.clear()
+    return xp
+
+def save_weight(uid: int, data: dict) -> int:
+    valid, msg = DataValidator.validate_weight(data["weight"], data.get("body_fat", 20), data.get("lean_mass", 35))
+    if not valid:
+        st.error(f"❌ {msg}")
+        return 0
+    
+    with db() as conn:
+        existing = conn.execute("SELECT id FROM weight_logs WHERE user_id=? AND date=?", (uid, data["date"])).fetchone()
+        if existing:
+            set_clause = ", ".join(f"{k}=?" for k in data)
+            conn.execute(f"UPDATE weight_logs SET {set_clause} WHERE user_id=? AND date=?", list(data.values()) + [uid, data["date"]])
+            xp = 0
+        else:
+            cols = ", ".join(data.keys())
+            placeholders = ", ".join("?" * len(data))
+            conn.execute(f"INSERT INTO weight_logs(user_id,{cols}) VALUES(?,{placeholders})", [uid] + list(data.values()))
+            xp = 20
+            if XPEngine.can_earn(uid, "weight"):
+                conn.execute("INSERT INTO xp_logs(user_id,amount,source) VALUES(?,?,?)", (uid, xp, "weight"))
+            else:
+                xp = 0
+        conn.execute("UPDATE users SET current_weight=? WHERE id=?", (data["weight"], uid))
+        track_event(uid, "weight_saved", {"weight": data["weight"], "date": data["date"]})
+    
+    st.cache_data.clear()
+    return xp
+
+def update_profile(uid: int, updates: dict):
+    with db() as conn:
+        set_clause = ", ".join(f"{k}=?" for k in updates)
+        conn.execute(f"UPDATE users SET {set_clause} WHERE id=?", list(updates.values()) + [uid])
+        track_event(uid, "profile_updated", updates)
+    st.cache_data.clear()
+
+def unlock_badge(uid: int, badge_key: str) -> bool:
+    with db() as conn:
+        try:
+            conn.execute("INSERT INTO user_badges(user_id,badge_key) VALUES(?,?)", (uid, badge_key))
+            track_event(uid, "badge_unlocked", {"badge": badge_key})
+            return True
+        except sqlite3.IntegrityError:
+            return False
+
+def get_badges(uid: int) -> List[str]:
+    with db() as conn:
+        rows = conn.execute("SELECT badge_key FROM user_badges WHERE user_id=?", (uid,)).fetchall()
+        return [r["badge_key"] for r in rows]
+
+def reset_all(uid: int = USER_ID):
+    with db() as conn:
+        for tbl in ("xp_logs", "user_badges", "user_events", "daily_checkins", "weight_logs", "users"):
+            conn.execute(f"DELETE FROM {tbl} WHERE {'user_id' if tbl != 'users' else 'id'}=?", (uid,))
+    seed_if_empty()
+    track_event(uid, "reset_data", {})
+    st.cache_data.clear()
+
+def export_data(uid: int) -> Tuple[pd.DataFrame, pd.DataFrame]:
+    with db() as conn:
+        checkins = pd.read_sql("SELECT * FROM daily_checkins WHERE user_id=? ORDER BY date", conn, params=(uid,))
+        weights = pd.read_sql("SELECT * FROM weight_logs WHERE user_id=? ORDER BY date", conn, params=(uid,))
+    return checkins, weights
+
+def get_events_df(uid: int) -> pd.DataFrame:
+    with db() as conn:
+        return pd.read_sql("SELECT * FROM user_events WHERE user_id=? ORDER BY created_at DESC", conn, params=(uid,), parse_dates=["created_at"])
 
 # -----------------------------------------------------------------------------
 # 8. UI COMPONENTS
@@ -422,7 +573,7 @@ def kpi(label: str, value: str, cls: str = "c-green", sub: str = "") -> str:
 def progress_bar(pct: float, color_class: str = "fill-purple") -> str:
     return f'<div class="prog-track"><div class="prog-fill {color_class}" style="width:{pct:.1f}%"></div></div>'
 
-def insight_box(text: str, kind: str = "info") -> str:
+def insight_box(text: str) -> str:
     return f'<div class="insight-box ins-info">💡 {text}</div>'
 
 def section_header(title: str, subtitle: str = "") -> None:
@@ -430,14 +581,14 @@ def section_header(title: str, subtitle: str = "") -> None:
     st.markdown(f"<h2>{title}</h2>{sub}<hr style='border:none;border-top:1px solid {C.BORDER};margin:12px 0 20px 0;'>", unsafe_allow_html=True)
 
 # -----------------------------------------------------------------------------
-# 9. PAGINAS
+# 9. PAGES
 # -----------------------------------------------------------------------------
 def page_dashboard(user, weights, checkins, scores, xp):
-    section_header("Dashboard Estrategico", "Visao geral do seu comportamento e progresso")
+    section_header("Dashboard Estratégico", "Visão geral do seu comportamento e progresso")
     
-    streak = Calc.streak(checkins["consistency_score"].tolist()) if not checkins.empty else 0
+    streak = AnalyticsEngine.streak(checkins["consistency_score"].tolist()) if not checkins.empty else 0
     cur_w = weights["weight"].iloc[-1] if not weights.empty else user["current_weight"]
-    lvl_name, _, lvl_pct = Calc.level_info(xp)
+    lvl_name, _, lvl_pct = LevelEngine.info(xp)
     
     col1, col2, col3, col4 = st.columns(4)
     with col1:
@@ -450,7 +601,9 @@ def page_dashboard(user, weights, checkins, scores, xp):
         st.markdown(card(kpi("RECUPERACAO", f"{scores['recovery']:.0f}", "c-orange")), unsafe_allow_html=True)
     
     st.markdown(card(kpi("NIVEL", lvl_name, "c-purple", f"{xp} XP") + progress_bar(lvl_pct)), unsafe_allow_html=True)
-    st.info("Sistema operacional. Registre seu primeiro check-in na aba 'Registrar'.")
+    
+    if checkins.empty:
+        st.info("📝 Nenhum registro ainda. Vá em 'Registrar' para começar sua jornada.")
 
 def page_register(uid: int, user: Dict):
     section_header("Registrar Hoje", f"Entrada do dia {date.today().strftime('%d/%m/%Y')}")
@@ -468,10 +621,8 @@ def page_register(uid: int, user: Dict):
                 mood = st.slider("Humor (1-10)", 1, 10, 7)
                 emotion = st.selectbox("Estado emocional", ["Focado", "Motivado", "Determinado", "Cansado", "Ansioso"])
             if st.form_submit_button("Salvar Check-in"):
-                disc = int(np.clip(mood * 5 + 50 + workout * 0.3, 10, 100))
-                water_score = min(water / 35.0, 30.0)
-                cal_score = max(0.0, 100.0 - abs(cal - 1800) / 20.0)
-                cons = int(np.clip(disc * 0.7 + cal_score + water_score, 15, 100))
+                cons = ConsistencyEngine.calculate(cal, water, sleep, workout, mood)
+                disc = int(np.clip(mood * 10 + workout / 5, 10, 100))
                 data = {
                     "date": date.today().isoformat(),
                     "calories_consumed": cal,
@@ -525,35 +676,60 @@ def page_profile(uid: int, user: Dict):
             update_profile(uid, {"name": name, "age": age, "sex": sex, "height": height, "target_weight": target, "activity_level": act})
             st.toast("Perfil atualizado!", icon="👤")
             st.rerun()
-    
-    bmi = Calc.bmi(user["current_weight"], user["height"])
-    st.metric("IMC atual", f"{bmi:.1f}")
 
 def page_config(uid: int):
     section_header("Configuracoes", "Exportar dados e opcoes do sistema")
-    if st.button("Exportar dados (CSV)"):
+    
+    st.markdown("#### 📥 Exportar dados")
+    if st.button("Gerar CSVs"):
         ch, wt = export_data(uid)
         st.download_button("Check-ins CSV", ch.to_csv(index=False), "checkins.csv", "text/csv")
         st.download_button("Pesos CSV", wt.to_csv(index=False), "weights.csv", "text/csv")
+    
     st.markdown("---")
-    st.markdown("### Zona de Perigo")
-    if st.button("Resetar todos os dados", type="secondary"):
-        reset_all(uid)
-        st.toast("Dados resetados!", icon="🔄")
-        st.rerun()
+    st.markdown("#### ⚠️ Resetar dados")
+    
+    if "confirm_reset" not in st.session_state:
+        st.session_state.confirm_reset = False
+    
+    if not st.session_state.confirm_reset:
+        if st.button("🗑️ Resetar todos os dados", type="secondary"):
+            st.session_state.confirm_reset = True
+            st.rerun()
+    else:
+        st.warning("⚠️ Isso apagará TODOS os seus dados permanentemente.")
+        col1, col2 = st.columns(2)
+        with col1:
+            if st.button("✅ Sim, resetar tudo"):
+                reset_all(uid)
+                st.session_state.confirm_reset = False
+                st.toast("Dados resetados!", icon="🔄")
+                st.rerun()
+        with col2:
+            if st.button("❌ Cancelar"):
+                st.session_state.confirm_reset = False
+                st.rerun()
+
+def page_telemetry(uid: int):
+    section_header("Telemetria", "Eventos e comportamento")
+    df = get_events_df(uid)
+    if df.empty:
+        st.info("Nenhum evento registrado ainda.")
+        return
+    st.dataframe(df.head(50), use_container_width=True)
 
 # -----------------------------------------------------------------------------
 # 10. SIDEBAR
 # -----------------------------------------------------------------------------
 def render_sidebar(user: Dict, xp: int) -> str:
-    lvl_name, _, lvl_pct = Calc.level_info(xp)
+    lvl_name, _, lvl_pct = LevelEngine.info(xp)
     with st.sidebar:
         if logo_img:
             st.image(logo_img, width=120)
         else:
             st.markdown("<h2>⚡ EmagreSim</h2>", unsafe_allow_html=True)
         st.markdown(card(kpi("NIVEL", lvl_name, "c-purple", f"{xp} XP") + progress_bar(lvl_pct)), unsafe_allow_html=True)
-        page = st.radio("Navegacao", ["Dashboard", "Registrar", "Perfil", "Config"], label_visibility="collapsed")
+        page = st.radio("Navegacao", ["Dashboard", "Registrar", "Perfil", "Config", "Telemetria"], label_visibility="collapsed")
         st.markdown(f"<div style='margin-top:20px;font-size:.75rem;color:{C.MUTED};'>Ola, {user.get('name', 'Usuario')}</div>", unsafe_allow_html=True)
     return page
 
@@ -565,7 +741,7 @@ def main():
     seed_if_empty()
     user, weights, checkins = load_all(USER_ID)
     xp = load_xp(USER_ID)
-    scores = Analytics.scores(checkins)
+    scores = AnalyticsEngine.scores(checkins)
     
     page = render_sidebar(user, xp)
     
@@ -577,6 +753,8 @@ def main():
         page_profile(USER_ID, user)
     elif page == "Config":
         page_config(USER_ID)
+    elif page == "Telemetria":
+        page_telemetry(USER_ID)
 
 if __name__ == "__main__":
     main()
