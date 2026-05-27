@@ -1,14 +1,7 @@
 # -*- coding: utf-8 -*-
 """
-EmagreSim v6.2 - Behavioral Health OS
-Arquivo único refatorado com:
-- Database singleton + pool de conexões
-- Models tipados (dataclasses + pydantic)
-- Validação em tempo real
-- Upsert genérico
-- Gráficos de tendência
-- Splash corrigido
-- Cache granular
+EmagreSim v6.3 - Behavioral Health OS
+Arquivo único refatorado - SEM dependência externa (pydantic removido)
 """
 
 import streamlit as st
@@ -26,14 +19,13 @@ from typing import List, Dict, Optional, Tuple, Any
 from scipy import stats
 import plotly.graph_objects as go
 import plotly.express as px
-from pydantic import BaseModel, validator, Field
 
 # -----------------------------------------------------------------------------
 # 1. CONFIGURAÇÕES GLOBAIS
 # -----------------------------------------------------------------------------
 IS_DEV = os.environ.get("EMAGRESIM_ENV", "dev") == "dev"
 DB_PATH = "emagresim_v6.db"
-USER_ID = 1  # Temporário - preparado para multi-usuário
+USER_ID = 1
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s | %(levelname)-8s | %(message)s")
 logger = logging.getLogger("emagresim")
@@ -72,47 +64,68 @@ class Constants:
 CONST = Constants()
 
 # -----------------------------------------------------------------------------
-# 3. MODELS (tipagem forte)
+# 3. MODELS (dataclasses - sem pydantic)
 # -----------------------------------------------------------------------------
-class UserProfile(BaseModel):
+@dataclass
+class UserProfile:
     id: int = 1
     name: str = "Usuario"
-    age: int = Field(30, ge=18, le=100)
-    sex: str = Field("M", pattern="^(M|F)$")
-    height: float = Field(1.75, ge=1.40, le=2.20)
-    current_weight: float = Field(80.0, ge=30.0, le=300.0)
-    target_weight: float = Field(70.0, ge=30.0, le=300.0)
+    age: int = 30
+    sex: str = "M"
+    height: float = 1.75
+    current_weight: float = 80.0
+    target_weight: float = 70.0
     activity_level: str = "moderado"
     created_at: datetime = field(default_factory=datetime.now)
 
-class WeightEntry(BaseModel):
+@dataclass
+class WeightEntry:
     date: date
-    weight: float = Field(..., ge=30.0, le=300.0)
-    body_fat: float = Field(..., ge=3.0, le=60.0)
-    lean_mass: float = Field(..., ge=20.0, le=120.0)
+    weight: float
+    body_fat: float
+    lean_mass: float
     
-    @validator('weight')
-    def validate_weight(cls, v, values):
-        if 'body_fat' in values and 'lean_mass' in values:
-            fat_mass = v * values['body_fat'] / 100
-            expected = values['lean_mass'] + fat_mass
-            if v > 0 and abs(expected - v) / v > CONST.VALIDATION_TOLERANCE:
-                raise ValueError(f"Inconsistência fisiológica: peso não condiz com gordura+massa magra")
-        return v
+    def validate(self) -> Tuple[bool, str]:
+        if self.weight < 30 or self.weight > 300:
+            return False, "Peso fora do range (30-300 kg)"
+        if self.body_fat < 3 or self.body_fat > 60:
+            return False, "Gordura fora do range (3-60%)"
+        if self.lean_mass < 20 or self.lean_mass > 120:
+            return False, "Massa magra fora do range (20-120 kg)"
+        
+        fat_mass = self.weight * self.body_fat / 100
+        expected = self.lean_mass + fat_mass
+        if self.weight > 0 and abs(expected - self.weight) / self.weight > CONST.VALIDATION_TOLERANCE:
+            return False, f"Inconsistência: massa magra({self.lean_mass}) + gordura({fat_mass:.1f}) ≠ peso({self.weight:.1f})"
+        return True, ""
 
-class CheckinEntry(BaseModel):
+@dataclass
+class CheckinEntry:
     date: date
-    calories_consumed: float = Field(0, ge=0, le=8000)
-    water_ml: int = Field(0, ge=0, le=6000)
-    sleep_hours: float = Field(0, ge=0, le=24)
-    workout_minutes: int = Field(0, ge=0, le=600)
-    mood_score: int = Field(5, ge=1, le=10)
-    emotional_state: str = "Focado"
+    calories_consumed: float
+    water_ml: int
+    sleep_hours: float
+    workout_minutes: int
+    mood_score: int
+    emotional_state: str
     consistency_score: int = 0
     discipline_score: int = 0
+    
+    def validate(self) -> Tuple[bool, str]:
+        if self.calories_consumed < 0 or self.calories_consumed > 8000:
+            return False, "Calorias fora do range (0-8000)"
+        if self.water_ml < 0 or self.water_ml > 6000:
+            return False, "Água fora do range (0-6000 ml)"
+        if self.sleep_hours < 0 or self.sleep_hours > 24:
+            return False, "Sono fora do range (0-24h)"
+        if self.workout_minutes < 0 or self.workout_minutes > 600:
+            return False, "Treino fora do range (0-600 min)"
+        if self.mood_score < 1 or self.mood_score > 10:
+            return False, "Humor fora do range (1-10)"
+        return True, ""
 
 # -----------------------------------------------------------------------------
-# 4. DATABASE LAYER (Singleton com pool)
+# 4. DATABASE LAYER (Singleton)
 # -----------------------------------------------------------------------------
 class Database:
     _instance = None
@@ -129,7 +142,7 @@ class Database:
             self._connection.row_factory = sqlite3.Row
             self._connection.execute("PRAGMA foreign_keys = ON")
             self._connection.execute("PRAGMA journal_mode = WAL")
-            self._connection.execute("PRAGMA cache_size = -2000")  # 2MB cache
+            self._connection.execute("PRAGMA cache_size = -2000")
         return self._connection
     
     def close(self):
@@ -148,10 +161,10 @@ def db():
     except Exception as e:
         conn.rollback()
         raise
-    # Não fecha a conexão aqui (mantém viva para reuso)
+    # Não fecha a conexão
 
 # -----------------------------------------------------------------------------
-# 5. DOMAIN ENGINES (puros, sem dependência de UI)
+# 5. DOMAIN ENGINES
 # -----------------------------------------------------------------------------
 class ConsistencyEngine:
     @staticmethod
@@ -174,9 +187,12 @@ class XPEngine:
     @staticmethod
     def calculate(consistency: int, sleep_hours: float, workout_minutes: int) -> int:
         xp = CONST.XP_BASE
-        if consistency >= 80: xp += CONST.XP_CONSISTENCY_BONUS
-        if sleep_hours >= 8: xp += CONST.XP_SLEEP_BONUS
-        if workout_minutes >= 30: xp += CONST.XP_WORKOUT_BONUS
+        if consistency >= 80:
+            xp += CONST.XP_CONSISTENCY_BONUS
+        if sleep_hours >= 8:
+            xp += CONST.XP_SLEEP_BONUS
+        if workout_minutes >= 30:
+            xp += CONST.XP_WORKOUT_BONUS
         return xp
     
     @staticmethod
@@ -231,8 +247,10 @@ class AnalyticsEngine:
     def streak(scores: List[float], threshold: int = 70) -> int:
         s = 0
         for sc in reversed(scores):
-            if sc >= threshold: s += 1
-            else: break
+            if sc >= threshold:
+                s += 1
+            else:
+                break
         return s
     
     @staticmethod
@@ -244,23 +262,21 @@ class AnalyticsEngine:
             mode="lines+markers", name=column.capitalize(),
             line=dict(color="#00E676", width=2), marker=dict(size=4)
         ))
-        # Add trend line
-        x_numeric = np.arange(len(recent))
-        slope, intercept = np.polyfit(x_numeric, recent[column], 1)
-        trend_y = slope * x_numeric + intercept
-        fig.add_trace(go.Scatter(
-            x=recent["date"], y=trend_y, mode="lines",
-            line=dict(color="#FF6B35", width=1.5, dash="dot"),
-            name="Tendência"
-        ))
-        fig.update_layout(paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)", height=300)
+        if len(recent) > 1:
+            x_numeric = np.arange(len(recent))
+            slope, intercept = np.polyfit(x_numeric, recent[column], 1)
+            trend_y = slope * x_numeric + intercept
+            fig.add_trace(go.Scatter(
+                x=recent["date"], y=trend_y, mode="lines",
+                line=dict(color="#FF6B35", width=1.5, dash="dot"),
+                name="Tendência"
+            ))
+        fig.update_layout(paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)", height=300, margin=dict(l=10, r=10, t=30, b=10))
         return fig
 
 # -----------------------------------------------------------------------------
-# 6. DATABASE SCHEMA (com migrations)
+# 6. DATABASE SCHEMA
 # -----------------------------------------------------------------------------
-SCHEMA_VERSION = 2
-
 SCHEMA_SQL = """
 CREATE TABLE IF NOT EXISTS schema_version (version INTEGER);
 CREATE TABLE IF NOT EXISTS users (
@@ -294,10 +310,10 @@ CREATE TABLE IF NOT EXISTS user_events (
 );
 CREATE INDEX IF NOT EXISTS idx_checkins ON daily_checkins(user_id, date DESC);
 CREATE INDEX IF NOT EXISTS idx_weights ON weight_logs(user_id, date DESC);
+CREATE INDEX IF NOT EXISTS idx_events ON user_events(user_id, created_at DESC);
 """
 
 def run_migrations(conn):
-    # Verifica versão atual
     cur = conn.execute("SELECT version FROM schema_version")
     row = cur.fetchone()
     current_version = row[0] if row else 0
@@ -307,7 +323,6 @@ def run_migrations(conn):
         conn.execute("INSERT INTO schema_version VALUES (1)")
     
     if current_version < 2:
-        # Adiciona novas colunas se necessário
         try:
             conn.execute("ALTER TABLE users ADD COLUMN created_at TIMESTAMP")
         except sqlite3.OperationalError:
@@ -317,10 +332,10 @@ def run_migrations(conn):
 def init_db():
     with db() as conn:
         run_migrations(conn)
-    logger.info("Database initialized with migrations")
+    logger.info("Database initialized")
 
 # -----------------------------------------------------------------------------
-# 7. REPOSITORY (cache granular)
+# 7. REPOSITORY
 # -----------------------------------------------------------------------------
 @st.cache_resource(ttl=3600)
 def get_db_connection():
@@ -349,14 +364,13 @@ def load_xp_total(uid: int) -> int:
         return row[0] if row else 0
 
 def invalidate_user_cache(uid: int):
-    """Limpa apenas o cache relacionado ao usuário"""
     load_user.clear()
     load_weights.clear()
     load_checkins.clear()
     load_xp_total.clear()
 
 # -----------------------------------------------------------------------------
-# 8. SERVICES (upsert genérico)
+# 8. SERVICES
 # -----------------------------------------------------------------------------
 def track_event(uid: int, event_name: str, metadata: dict = None):
     with db() as conn:
@@ -366,7 +380,6 @@ def track_event(uid: int, event_name: str, metadata: dict = None):
         )
 
 def _upsert_record(table: str, uid: int, data: dict, date_key: str = "date"):
-    """Genérico para INSERT/UPDATE com base na data"""
     with db() as conn:
         existing = conn.execute(
             f"SELECT id FROM {table} WHERE user_id=? AND {date_key}=?", (uid, data[date_key])
@@ -378,7 +391,7 @@ def _upsert_record(table: str, uid: int, data: dict, date_key: str = "date"):
                 f"UPDATE {table} SET {set_clause} WHERE user_id=? AND {date_key}=?",
                 list(data.values()) + [uid, data[date_key]]
             )
-            return False  # update
+            return False
         else:
             cols = ", ".join(data.keys())
             placeholders = ", ".join(["?"] * len(data))
@@ -386,9 +399,16 @@ def _upsert_record(table: str, uid: int, data: dict, date_key: str = "date"):
                 f"INSERT INTO {table}(user_id,{cols}) VALUES(?,{placeholders})",
                 [uid] + list(data.values())
             )
-            return True  # insert
+            return True
 
 def save_checkin(uid: int, data: dict) -> int:
+    # Validação
+    entry = CheckinEntry(**data)
+    valid, msg = entry.validate()
+    if not valid:
+        st.error(f"❌ {msg}")
+        return 0
+    
     is_new = _upsert_record("daily_checkins", uid, data, "date")
     
     xp = 0
@@ -409,12 +429,10 @@ def save_checkin(uid: int, data: dict) -> int:
     return xp
 
 def save_weight(uid: int, data: dict) -> int:
-    # Validação
-    try:
-        entry = WeightEntry(**data)
-        data = entry.dict()
-    except ValueError as e:
-        st.error(f"❌ {str(e)}")
+    entry = WeightEntry(**data)
+    valid, msg = entry.validate()
+    if not valid:
+        st.error(f"❌ {msg}")
         return 0
     
     is_new = _upsert_record("weight_logs", uid, data, "date")
@@ -428,7 +446,6 @@ def save_weight(uid: int, data: dict) -> int:
                 (uid, xp, "weight", datetime.now().isoformat())
             )
     
-    # Atualiza peso atual no perfil
     with db() as conn:
         conn.execute("UPDATE users SET current_weight=? WHERE id=?", (data["weight"], uid))
     
@@ -459,7 +476,7 @@ def get_events_df(uid: int) -> pd.DataFrame:
         return pd.read_sql("SELECT * FROM user_events WHERE user_id=? ORDER BY created_at DESC", conn, params=(uid,))
 
 # -----------------------------------------------------------------------------
-# 9. SEED (cria dados demo se vazio)
+# 9. SEED
 # -----------------------------------------------------------------------------
 def seed_if_empty():
     with db() as conn:
@@ -467,12 +484,10 @@ def seed_if_empty():
         if count > 0:
             return
         
-        # Cria usuário
         conn.execute("""
             INSERT INTO users VALUES (1, 'Usuario Demo', 30, 'M', 1.78, 88.0, 72.0, 'moderado', ?)
         """, (datetime.now().isoformat(),))
         
-        # Gera 180 dias de dados
         end_date = date.today() - timedelta(days=1)
         dates = [end_date - timedelta(days=x) for x in range(180)][::-1]
         rng = np.random.default_rng(42)
@@ -496,7 +511,7 @@ def seed_if_empty():
     logger.info("Seed completed")
 
 # -----------------------------------------------------------------------------
-# 10. UI COMPONENTS (organizados)
+# 10. UI COMPONENTS
 # -----------------------------------------------------------------------------
 class UI:
     @staticmethod
@@ -523,13 +538,13 @@ class UI:
         st.markdown(f"<h2>{title}</h2>{sub}<hr style='border:none;border-top:1px solid rgba(255,255,255,0.06);margin:12px 0 20px 0;'>", unsafe_allow_html=True)
 
 # -----------------------------------------------------------------------------
-# 11. CSS (versão otimizada)
+# 11. CSS
 # -----------------------------------------------------------------------------
 CUSTOM_CSS = """
 <style>
 @import url('https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800;900&display=swap');
-.stApp, .stApp > header, section[data-testid="stSidebar"] { background: #070910 !important; }
-section[data-testid="stSidebar"] { border-right: 1px solid rgba(255,255,255,0.05); }
+.stApp, .stApp > header { background: #070910 !important; }
+section[data-testid="stSidebar"] { background: #0d1117 !important; border-right: 1px solid rgba(255,255,255,0.05); }
 *, p, div, span, label, .stMarkdown { font-family: 'Outfit', sans-serif !important; }
 h1, h2, h3, h4 { font-family: 'Outfit', sans-serif !important; font-weight: 800; letter-spacing: -0.03em; color: #E2E8F0; }
 .es-card, .es-card-flat { background: #111620; border: 1px solid rgba(255,255,255,0.05); border-radius: 16px; padding: 20px 24px; margin-bottom: 16px; transition: all 0.2s; }
@@ -558,7 +573,7 @@ div[data-testid="stMetric"] label { color: #64748B !important; font-size: .7rem 
 st.markdown(CUSTOM_CSS, unsafe_allow_html=True)
 
 # -----------------------------------------------------------------------------
-# 12. SPLASH CORRIGIDO
+# 12. SPLASH
 # -----------------------------------------------------------------------------
 if "app_initialized" not in st.session_state:
     with st.container():
@@ -568,7 +583,7 @@ if "app_initialized" not in st.session_state:
         st.rerun()
 
 # -----------------------------------------------------------------------------
-# 13. PAGES FUNCTIONS
+# 13. PAGES
 # -----------------------------------------------------------------------------
 def page_dashboard(user, weights, checkins, scores, xp):
     UI.section_header("Dashboard Estratégico", "Visão geral do seu comportamento e progresso")
@@ -585,7 +600,6 @@ def page_dashboard(user, weights, checkins, scores, xp):
     
     st.markdown(UI.card(UI.kpi("NIVEL", lvl_name, "c-purple", f"{xp} XP") + UI.progress_bar(lvl_pct)), unsafe_allow_html=True)
     
-    # Gráficos de tendência
     if not weights.empty:
         st.plotly_chart(AnalyticsEngine.trend_line(weights, "weight"), use_container_width=True)
     
