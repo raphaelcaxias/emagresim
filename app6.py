@@ -1,8 +1,8 @@
 # -*- coding: utf-8 -*-
 """
-EmagreSim v7.1 - Behavioral Health OS (Laranja Flame Edition)
-Cores: Laranja flamejante (#FF4D00) | Dark premium
-Todos os erros corrigidos.
+EmagreSim v8.0 - Premium Dark Edition
+Paleta: Grafite ultraescuro (#0D0D0D, #1A1A1A)
+KPIs com badges, gráfico de consistência, sidebar minimalista
 """
 
 import streamlit as st
@@ -18,118 +18,247 @@ from contextlib import contextmanager
 from dataclasses import dataclass
 from typing import List, Dict, Optional, Tuple
 from scipy import stats
-import plotly.graph_objects as go
-import plotly.express as px
 
 # -----------------------------------------------------------------------------
 # 1. CONFIGURACOES
 # -----------------------------------------------------------------------------
 IS_DEV = os.environ.get("EMAGRESIM_ENV", "dev") == "dev"
-DB_PATH = "emagresim_v7.db"
+DB_PATH = "emagresim_v8.db"
 USER_ID = 1
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s | %(levelname)-8s | %(message)s")
 logger = logging.getLogger("emagresim")
 
 st.set_page_config(
-    page_title="EmagreSim | Transformação",
+    page_title="EmagreSim | Premium",
     page_icon="🔥",
     layout="wide",
     initial_sidebar_state="expanded",
 )
 
 # -----------------------------------------------------------------------------
-# 2. CORES (Paleta Laranja Flame - Premium Dark)
+# 2. CORES (Premium Dark - Grafite)
 # -----------------------------------------------------------------------------
 @dataclass
 class C:
-    PRIMARY: str = "#FF4D00"        # Laranja flamejante
-    PRIMARY_DARK: str = "#E63E00"   # Laranja escuro (hover)
-    PRIMARY_LIGHT: str = "#FF8A4D"  # Laranja claro (gradientes)
-    BG: str = "#12100B"             # Marrom quase preto
-    SURFACE: str = "#1F1B16"        # Marrom escuro (cards, sidebar)
-    SURFACE_LIGHT: str = "#2A241E"  # Marrom médio (inputs)
-    TEXT: str = "#F5F0E6"           # Bege claro
-    TEXT_MUTED: str = "#B8A88F"     # Bege médio
-    SUCCESS: str = "#22C55E"        # Verde
-    WARNING: str = "#FBBF24"        # Amarelo
-    DANGER: str = "#EF4444"         # Vermelho
+    # Fundos
+    BG: str = "#0D0D0D"          # Grafite ultraescuro
+    SURFACE: str = "#1A1A1A"      # Superfície principal
+    SURFACE_LIGHT: str = "#242424" # Cards e sidebars
+    CARD: str = "#1E1E1E"         # Cards internos
+    
+    # Acentos
+    PRIMARY: str = "#FF4D00"      # Laranja flamejante
+    PRIMARY_DARK: str = "#E63E00"
+    PRIMARY_LIGHT: str = "#FF8A4D"
+    
+    # Textos
+    TEXT: str = "#FFFFFF"
+    TEXT_MUTED: str = "#A0A0A0"
+    TEXT_DIM: str = "#6B6B6B"
+    
+    # Estados
+    SUCCESS: str = "#22C55E"
+    WARNING: str = "#FBBF24"
+    DANGER: str = "#EF4444"
 
 # -----------------------------------------------------------------------------
-# 3. CSS MODERNO (Laranja Flame)
+# 3. CSS PREMIUM (Totalmente customizado)
 # -----------------------------------------------------------------------------
 CUSTOM_CSS = f"""
 <style>
 @import url('https://fonts.googleapis.com/css2?family=Inter:opsz,wght@14..32,300;400;500;600;700;800&display=swap');
 
-.stApp, .stApp > header {{
+/* Reset completo */
+.stApp, .stApp > header, .stApp > div {{
     background: {C.BG} !important;
 }}
 
 section[data-testid="stSidebar"] {{
     background: {C.SURFACE} !important;
-    border-right: 1px solid rgba(255,255,255,0.05);
+    border-right: none !important;
+    padding: 1rem 0.5rem !important;
 }}
 
+/* Remove bordas inferiores padrão do Streamlit */
+hr, .stMarkdown hr {{
+    display: none !important;
+}}
+
+/* Typografia */
 * {{
     font-family: 'Inter', sans-serif !important;
 }}
 
-h1, h2, h3, h4 {{
-    font-weight: 800 !important;
+h1, h2, h3, h4, h5, h6 {{
+    font-weight: 700 !important;
     letter-spacing: -0.02em;
     color: {C.TEXT} !important;
+    margin-bottom: 0.5rem !important;
     background: none !important;
-    -webkit-text-fill-color: {C.TEXT} !important;
 }}
 
 /* Cards */
-.es-card, .es-card-flat {{
-    background: {C.SURFACE};
+.es-card {{
+    background: {C.CARD};
     border: 1px solid rgba(255,255,255,0.06);
     border-radius: 20px;
     padding: 20px 24px;
-    margin-bottom: 16px;
-    transition: all 0.3s ease;
+    margin-bottom: 20px;
+    transition: all 0.2s ease;
 }}
 
 .es-card:hover {{
-    border-color: {C.PRIMARY};
-    transform: translateY(-3px);
+    border-color: rgba(255,77,0,0.3);
 }}
 
-/* KPIs */
-.kpi-wrap {{
+/* KPIs com badges */
+.kpi-row {{
     display: flex;
-    flex-direction: column;
-    gap: 4px;
+    justify-content: space-between;
+    align-items: flex-start;
+    gap: 20px;
+    flex-wrap: wrap;
+    margin-bottom: 24px;
+}}
+
+.kpi-item {{
+    flex: 1;
+    min-width: 180px;
 }}
 
 .kpi-label {{
     font-size: 0.7rem;
-    font-weight: 700;
+    font-weight: 600;
     text-transform: uppercase;
-    letter-spacing: 0.1em;
-    color: {C.TEXT_MUTED};
+    letter-spacing: 0.08em;
+    color: {C.TEXT_DIM};
+    margin-bottom: 4px;
 }}
 
 .kpi-value {{
     font-size: 2rem;
     font-weight: 800;
+    color: {C.TEXT};
     line-height: 1.1;
+    margin-bottom: 8px;
 }}
 
-.kpi-sub {{
+.kpi-badge {{
+    display: inline-flex;
+    align-items: center;
+    background: rgba(255,255,255,0.08);
+    border-radius: 20px;
+    padding: 4px 10px;
     font-size: 0.7rem;
+    font-weight: 500;
     color: {C.TEXT_MUTED};
-    margin-top: 4px;
+    gap: 4px;
 }}
 
-.c-primary {{ color: {C.PRIMARY}; }}
-.c-success {{ color: {C.SUCCESS}; }}
-.c-muted {{ color: {C.TEXT_MUTED}; }}
+.kpi-badge.positive {{
+    background: rgba(34,197,94,0.12);
+    color: {C.SUCCESS};
+}}
 
-/* Progress Bar */
+.kpi-badge.warning {{
+    background: rgba(251,191,36,0.12);
+    color: {C.WARNING};
+}}
+
+/* Score row (gráfico consistência + tabela) */
+.scores-row {{
+    display: flex;
+    gap: 24px;
+    margin-bottom: 24px;
+    flex-wrap: wrap;
+}}
+
+.chart-container {{
+    flex: 2;
+    background: {C.CARD};
+    border-radius: 20px;
+    padding: 20px;
+    border: 1px solid rgba(255,255,255,0.06);
+}}
+
+.metrics-container {{
+    flex: 1;
+    background: {C.CARD};
+    border-radius: 20px;
+    padding: 20px;
+    border: 1px solid rgba(255,255,255,0.06);
+}}
+
+.metric-item {{
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 12px 0;
+    border-bottom: 1px solid rgba(255,255,255,0.06);
+}}
+
+.metric-item:last-child {{
+    border-bottom: none;
+}}
+
+.metric-name {{
+    font-size: 0.85rem;
+    color: {C.TEXT_MUTED};
+}}
+
+.metric-bar {{
+    width: 120px;
+    height: 6px;
+    background: rgba(255,255,255,0.1);
+    border-radius: 3px;
+    overflow: hidden;
+}}
+
+.metric-fill {{
+    height: 100%;
+    border-radius: 3px;
+    background: {C.PRIMARY};
+}}
+
+.metric-value {{
+    font-size: 0.85rem;
+    font-weight: 600;
+    color: {C.TEXT};
+    min-width: 45px;
+    text-align: right;
+}}
+
+/* Sidebar buttons */
+.nav-btn {{
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    width: 100%;
+    padding: 12px 16px;
+    margin: 4px 0;
+    background: transparent;
+    border: none;
+    border-radius: 12px;
+    font-size: 0.9rem;
+    font-weight: 500;
+    color: {C.TEXT_MUTED};
+    cursor: pointer;
+    transition: all 0.2s;
+    text-align: left;
+}}
+
+.nav-btn:hover {{
+    background: rgba(255,255,255,0.05);
+    color: {C.TEXT};
+}}
+
+.nav-btn.active {{
+    background: rgba(255,77,0,0.12);
+    color: {C.PRIMARY};
+}}
+
+/* Progress bar geral */
 .prog-track {{
     background: rgba(255,255,255,0.08);
     border-radius: 99px;
@@ -145,76 +274,38 @@ h1, h2, h3, h4 {{
     background: linear-gradient(90deg, {C.PRIMARY}, {C.PRIMARY_LIGHT});
 }}
 
-/* Insight Box */
-.insight-box {{
-    padding: 12px 16px;
-    border-radius: 16px;
-    margin: 8px 0;
-    font-size: 0.85rem;
-    background: rgba(255,77,0,0.08);
-    border-left: 3px solid {C.PRIMARY};
-    color: {C.TEXT};
-}}
-
-/* Botões */
-.stButton > button {{
-    border-radius: 40px !important;
-    font-weight: 700 !important;
-    background: {C.PRIMARY} !important;
-    color: {C.TEXT} !important;
-    border: none !important;
-    transition: all 0.2s !important;
-}}
-
-.stButton > button:hover {{
-    background: {C.PRIMARY_DARK} !important;
-    transform: translateY(-2px);
-}}
-
-/* Formulários */
-.stTextInput > div > div > input,
-.stNumberInput > div > div > input,
-.stSelectbox > div > div,
-.stTextArea > div > textarea {{
-    background: {C.SURFACE_LIGHT} !important;
-    color: {C.TEXT} !important;
-    border: 1px solid rgba(255,255,255,0.1) !important;
-    border-radius: 12px !important;
-}}
-
-/* Métricas */
-div[data-testid="stMetric"] label {{
-    color: {C.TEXT_MUTED} !important;
-    font-size: 0.7rem !important;
-}}
-
-div[data-testid="stMetric"] div[data-testid="stMetricValue"] {{
-    color: {C.PRIMARY} !important;
-    font-weight: 800 !important;
-}}
-
 /* Esconder elementos padrão */
-#MainMenu, header, footer, .stDeployButton {{ display: none; }}
+#MainMenu, header, footer, .stDeployButton {{
+    display: none !important;
+}}
+
+div[data-testid="stToolbar"] {{
+    display: none !important;
+}}
 
 /* Responsivo */
 @media (max-width: 768px) {{
-    .es-card, .es-card-flat {{ padding: 16px; }}
-    .kpi-value {{ font-size: 1.5rem; }}
+    .kpi-row {{
+        flex-direction: column;
+    }}
+    .scores-row {{
+        flex-direction: column;
+    }}
 }}
 </style>
 """
 st.markdown(CUSTOM_CSS, unsafe_allow_html=True)
 
 # -----------------------------------------------------------------------------
-# 4. SPLASH (com animação)
+# 4. SPLASH
 # -----------------------------------------------------------------------------
 if "splash_shown" not in st.session_state:
     with st.container():
         st.markdown(f"""
         <div style="height:100vh; display:flex; flex-direction:column; align-items:center; justify-content:center;">
             <div style="font-size:5rem; animation: pulse 1.5s infinite;">🔥</div>
-            <h1 style="font-size:2.5rem; margin-top:1rem; color:{C.TEXT};">Emagre<span style="color:{C.PRIMARY};">Sim</span></h1>
-            <p style="color:{C.TEXT_MUTED}; margin-top:0.5rem;">Behavioral Health OS</p>
+            <h1 style="font-size:2.5rem; margin-top:1rem;">Emagre<span style="color:{C.PRIMARY};">Sim</span></h1>
+            <p style="color:{C.TEXT_MUTED};">Behavioral Health OS</p>
         </div>
         <style>
         @keyframes pulse {{
@@ -315,8 +406,6 @@ def init_db():
             conn.executescript(SCHEMA_SQL)
             _generate_seed(conn)
             logger.info("Database created with seed")
-        else:
-            logger.info("Database already exists")
 
 def _generate_seed(conn):
     conn.execute("""
@@ -370,6 +459,12 @@ class AnalyticsEngine:
             else:
                 break
         return s
+    
+    @staticmethod
+    def last_14_consistency(checkins: pd.DataFrame) -> List[int]:
+        if checkins.empty:
+            return []
+        return checkins.tail(14)["consistency_score"].tolist()
 
 class LevelEngine:
     LEVELS = [("Iniciante", 0), ("Guerreiro", 500), ("Atleta", 1500), ("Elite", 3000), ("Lenda Fit", 6000)]
@@ -419,7 +514,7 @@ def save_checkin(uid: int, data: dict) -> int:
         if existing:
             set_clause = ", ".join(f"{k}=?" for k in data)
             conn.execute(f"UPDATE daily_checkins SET {set_clause} WHERE user_id=? AND date=?", list(data.values()) + [uid, data["date"]])
-            xp = 0
+            return 0
         else:
             cols = ", ".join(data.keys())
             placeholders = ", ".join(["?"] * len(data))
@@ -429,8 +524,8 @@ def save_checkin(uid: int, data: dict) -> int:
             if data.get("sleep_hours", 0) >= 8: xp += 40
             if data.get("workout_minutes", 0) >= 30: xp += 15
             conn.execute("INSERT INTO xp_logs(user_id,amount,source) VALUES(?,?,?)", (uid, xp, "checkin"))
-    invalidate_cache()
-    return xp
+            invalidate_cache()
+            return xp
 
 def save_weight(uid: int, data: dict) -> int:
     with db() as conn:
@@ -438,16 +533,16 @@ def save_weight(uid: int, data: dict) -> int:
         if existing:
             set_clause = ", ".join(f"{k}=?" for k in data)
             conn.execute(f"UPDATE weight_logs SET {set_clause} WHERE user_id=? AND date=?", list(data.values()) + [uid, data["date"]])
-            xp = 0
+            return 0
         else:
             cols = ", ".join(data.keys())
             placeholders = ", ".join(["?"] * len(data))
             conn.execute(f"INSERT INTO weight_logs(user_id,{cols}) VALUES(?,{placeholders})", [uid] + list(data.values()))
             xp = 20
             conn.execute("INSERT INTO xp_logs(user_id,amount,source) VALUES(?,?,?)", (uid, xp, "weight"))
-        conn.execute("UPDATE users SET current_weight=? WHERE id=?", (data["weight"], uid))
-    invalidate_cache()
-    return xp
+            conn.execute("UPDATE users SET current_weight=? WHERE id=?", (data["weight"], uid))
+            invalidate_cache()
+            return xp
 
 def update_profile(uid: int, updates: dict):
     with db() as conn:
@@ -462,54 +557,115 @@ def reset_all(uid: int = USER_ID):
         _generate_seed(conn)
     invalidate_cache()
 
-def get_events_df(uid: int) -> pd.DataFrame:
-    with db() as conn:
-        return pd.read_sql("SELECT * FROM user_events WHERE user_id=? ORDER BY created_at DESC", conn, params=(uid,))
-
 # -----------------------------------------------------------------------------
-# 8. UI COMPONENTS
+# 8. UI COMPONENTS (HTML/CSS custom)
 # -----------------------------------------------------------------------------
-def card(html: str, flat: bool = False) -> str:
-    cls = "es-card-flat" if flat else "es-card"
-    return f'<div class="{cls}">{html}</div>'
+def render_kpi(label: str, value: str, badge_text: str = None, badge_type: str = "default"):
+    badge_html = ""
+    if badge_text:
+        badge_class = "positive" if badge_type == "positive" else "warning"
+        badge_html = f'<span class="kpi-badge {badge_class}">{badge_text}</span>'
+    
+    return f"""
+    <div class="kpi-item">
+        <div class="kpi-label">{label}</div>
+        <div class="kpi-value">{value}</div>
+        {badge_html}
+    </div>
+    """
 
-def kpi(label: str, value: str, color: str = "c-primary", sub: str = "") -> str:
-    sub_html = f'<div class="kpi-sub">{sub}</div>' if sub else ""
-    return f'<div class="kpi-wrap"><div class="kpi-label">{label}</div><div class="kpi-value {color}">{value}</div>{sub_html}</div>'
+def render_consistency_chart(values: List[int]):
+    if not values:
+        return '<div>Sem dados suficientes</div>'
+    
+    max_val = max(values) if values else 100
+    bars_html = ""
+    for i, v in enumerate(values):
+        height = (v / 100) * 100
+        bars_html += f"""
+        <div style="display:flex; flex-direction:column; align-items:center; gap:4px;">
+            <div style="width:24px; height:{height}px; background:{C.PRIMARY}; border-radius:4px 4px 0 0;"></div>
+            <div style="font-size:0.6rem; color:{C.TEXT_DIM};">{i+1}</div>
+        </div>
+        """
+    
+    return f"""
+    <div style="display:flex; justify-content:space-between; align-items:flex-end; gap:8px; height:140px;">
+        {bars_html}
+    </div>
+    <div style="margin-top:12px; text-align:center; font-size:0.7rem; color:{C.TEXT_DIM};">Consistência — últimos 14 dias</div>
+    """
 
-def progress_bar(pct: float) -> str:
-    return f'<div class="prog-track"><div class="prog-fill" style="width:{pct:.1f}%"></div></div>'
-
-def insight(text: str) -> str:
-    return f'<div class="insight-box">💡 {text}</div>'
-
-def section_header(title: str, subtitle: str = ""):
-    sub = f'<p style="color:{C.TEXT_MUTED};font-size:0.85rem;">{subtitle}</p>' if subtitle else ""
-    st.markdown(f"<h2>{title}</h2>{sub}<hr style='border:none;border-top:1px solid rgba(255,255,255,0.06);margin:12px 0 20px 0;'>", unsafe_allow_html=True)
+def render_metrics_table(scores: Dict[str, float]):
+    metrics = [
+        ("Adherence", scores.get("adherence", 0)),
+        ("Disciplina", scores.get("discipline", 0)),
+        ("Recuperação", scores.get("recovery", 0)),
+        ("Momentum", scores.get("momentum", 0)),
+        ("Estabilidade", scores.get("stability", 0)),
+    ]
+    
+    rows = ""
+    for name, value in metrics:
+        rows += f"""
+        <div class="metric-item">
+            <span class="metric-name">{name}</span>
+            <div class="metric-bar"><div class="metric-fill" style="width:{value}%"></div></div>
+            <span class="metric-value">{value:.0f}</span>
+        </div>
+        """
+    
+    return rows
 
 # -----------------------------------------------------------------------------
 # 9. PAGES
 # -----------------------------------------------------------------------------
-def page_dashboard(user, weights, checkins, scores, xp):
-    section_header("Dashboard Estratégico", "Visão geral do seu comportamento")
-    
+def page_dashboard(user, weights, checkins, scores, xp, consistency_data):
     streak = AnalyticsEngine.streak(checkins["consistency_score"].tolist()) if not checkins.empty else 0
     cur_w = weights["weight"].iloc[-1] if not weights.empty else user["current_weight"]
+    target = user["target_weight"]
+    delta = cur_w - target
+    delta_text = f"{delta:+.1f} kg"
+    delta_type = "positive" if delta < 0 else "warning"
+    
+    # KPIs com badges
+    st.markdown(f"""
+    <div class="kpi-row">
+        {render_kpi("ADHERENCE", f"{scores['adherence']:.0f}", f"Streak {streak}d", "positive")}
+        {render_kpi("PESO", f"{cur_w:.1f} kg", delta_text, delta_type)}
+        {render_kpi("DISCIPLINA", f"{scores['discipline']:.0f}", f"+3 esta semana", "positive")}
+        {render_kpi("RECUPERAÇÃO", f"{scores['recovery']:.0f}", f"+3 esta semana", "positive")}
+    </div>
+    """, unsafe_allow_html=True)
+    
+    # Gráfico de consistência + scores
+    st.markdown(f"""
+    <div class="scores-row">
+        <div class="chart-container">
+            {render_consistency_chart(consistency_data)}
+        </div>
+        <div class="metrics-container">
+            {render_metrics_table(scores)}
+        </div>
+    </div>
+    """, unsafe_allow_html=True)
+    
+    # Level e XP
     lvl_name, _, lvl_pct = LevelEngine.info(xp)
-    
-    col1, col2, col3, col4 = st.columns(4)
-    with col1: st.markdown(card(kpi("ADHERENCE", f"{scores['adherence']:.0f}", "c-primary", f"Streak {streak}d")), unsafe_allow_html=True)
-    with col2: st.markdown(card(kpi("PESO", f"{cur_w:.1f}kg", "c-primary")), unsafe_allow_html=True)
-    with col3: st.markdown(card(kpi("DISCIPLINA", f"{scores['discipline']:.0f}", "c-primary")), unsafe_allow_html=True)
-    with col4: st.markdown(card(kpi("RECUPERAÇÃO", f"{scores['recovery']:.0f}", "c-primary")), unsafe_allow_html=True)
-    
-    st.markdown(card(kpi("NÍVEL", lvl_name, "c-primary", f"{xp} XP") + progress_bar(lvl_pct)), unsafe_allow_html=True)
-    
-    if checkins.empty:
-        st.info("📝 Nenhum registro ainda. Comece na aba 'Registrar'.")
+    st.markdown(f"""
+    <div class="es-card">
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
+            <div><span style="color:{C.TEXT_MUTED}; font-size:0.7rem;">NÍVEL</span><br><span style="font-size:1.2rem; font-weight:700;">{lvl_name}</span></div>
+            <div style="text-align:right;"><span style="color:{C.TEXT_MUTED}; font-size:0.7rem;">XP TOTAL</span><br><span style="font-size:1.2rem; font-weight:700;">{xp}</span></div>
+        </div>
+        <div class="prog-track"><div class="prog-fill" style="width:{lvl_pct:.1f}%"></div></div>
+    </div>
+    """, unsafe_allow_html=True)
 
 def page_register(uid: int, user: Dict):
-    section_header("Registrar Hoje", f"Entrada do dia {date.today().strftime('%d/%m/%Y')}")
+    st.markdown("<h2>Registrar Hoje</h2>", unsafe_allow_html=True)
+    st.markdown(f"<p style='color:{C.TEXT_MUTED}; margin-bottom:20px;'>Entrada do dia {date.today().strftime('%d/%m/%Y')}</p>", unsafe_allow_html=True)
+    
     tab1, tab2 = st.tabs(["📝 Check-in Diário", "⚖️ Peso e Medidas"])
     
     with tab1:
@@ -556,11 +712,11 @@ def page_register(uid: int, user: Dict):
         with st.form("form_weight"):
             col1, col2, col3 = st.columns(3)
             with col1:
-                w = st.number_input("Peso (kg)", 30.0, 300.0, float(user["current_weight"]), 0.1, help="Range: 30-300 kg")
+                w = st.number_input("Peso (kg)", 30.0, 300.0, float(user["current_weight"]), 0.1)
             with col2:
-                bf = st.number_input("Gordura (%)", 3.0, 60.0, 20.0, 0.1, help="Range: 3-60%")
+                bf = st.number_input("Gordura (%)", 3.0, 60.0, 20.0, 0.1)
             with col3:
-                lm = st.number_input("Massa magra (kg)", 20.0, 120.0, 35.0, 0.1, help="Range: 20-120 kg")
+                lm = st.number_input("Massa magra (kg)", 20.0, 120.0, 35.0, 0.1)
             
             submitted = st.form_submit_button("🔥 Salvar Peso", use_container_width=True)
             if submitted:
@@ -574,7 +730,9 @@ def page_register(uid: int, user: Dict):
                     st.rerun()
 
 def page_profile(uid: int, user: Dict):
-    section_header("Perfil", "Edite seus dados pessoais")
+    st.markdown("<h2>Perfil</h2>", unsafe_allow_html=True)
+    st.markdown(f"<p style='color:{C.TEXT_MUTED}; margin-bottom:20px;'>Edite seus dados pessoais</p>", unsafe_allow_html=True)
+    
     with st.form("form_profile"):
         col1, col2 = st.columns(2)
         with col1:
@@ -594,7 +752,8 @@ def page_profile(uid: int, user: Dict):
             st.rerun()
 
 def page_config(uid: int):
-    section_header("Configurações", "Exportar dados e opções do sistema")
+    st.markdown("<h2>Configurações</h2>", unsafe_allow_html=True)
+    st.markdown(f"<p style='color:{C.TEXT_MUTED}; margin-bottom:20px;'>Exportar dados e opções do sistema</p>", unsafe_allow_html=True)
     
     if st.button("📥 Gerar CSVs"):
         with st.spinner("Preparando..."):
@@ -628,31 +787,49 @@ def page_config(uid: int):
                 st.session_state.confirm_reset = False
                 st.rerun()
 
-def page_telemetry(uid: int):
-    section_header("Telemetria", "Eventos registrados")
-    df = get_events_df(uid)
-    if df.empty:
-        st.info("Nenhum evento registrado ainda.")
-        return
-    st.dataframe(df.head(50), use_container_width=True)
-
 # -----------------------------------------------------------------------------
-# 10. SIDEBAR
+# 10. SIDEBAR (botões estilizados)
 # -----------------------------------------------------------------------------
-def render_sidebar(user: Dict, xp: int) -> str:
+def render_sidebar(user: Dict, xp: int, current_page: str) -> str:
     lvl_name, _, lvl_pct = LevelEngine.info(xp)
+    
     with st.sidebar:
         st.markdown(f"""
-        <div style="display:flex; align-items:center; gap:10px; margin-bottom:20px;">
+        <div style="display:flex; align-items:center; gap:10px; margin-bottom:24px;">
             <div style="font-size:2rem;">🔥</div>
-            <div style="font-size:1.2rem; font-weight:800; color:{C.TEXT}">
-                Emagre<span style="color:{C.PRIMARY};">Sim</span>
-            </div>
+            <div style="font-size:1.2rem; font-weight:800;">Emagre<span style="color:{C.PRIMARY};">Sim</span></div>
         </div>
         """, unsafe_allow_html=True)
-        st.markdown(card(kpi("NÍVEL", lvl_name, "c-primary", f"{xp} XP") + progress_bar(lvl_pct)), unsafe_allow_html=True)
-        page = st.radio("Navegação", ["Dashboard", "Registrar", "Perfil", "Config", "Telemetria"], label_visibility="collapsed")
-        st.markdown(f"<div style='margin-top:20px;font-size:0.75rem;color:{C.TEXT_MUTED};'>Olá, {user.get('name', 'Usuário')}</div>", unsafe_allow_html=True)
+        
+        st.markdown(f"""
+        <div style="background:{C.CARD}; border-radius:16px; padding:16px; margin-bottom:24px;">
+            <div style="display:flex; justify-content:space-between; margin-bottom:8px;">
+                <span style="color:{C.TEXT_DIM};">NÍVEL</span>
+                <span style="color:{C.PRIMARY};">{lvl_name}</span>
+            </div>
+            <div class="prog-track"><div class="prog-fill" style="width:{lvl_pct:.1f}%"></div></div>
+            <div style="margin-top:8px; font-size:0.7rem; color:{C.TEXT_DIM};">{xp} XP</div>
+        </div>
+        """, unsafe_allow_html=True)
+        
+        # Botões de navegação
+        pages = ["Dashboard", "Registrar", "Perfil", "Config"]
+        icons = {"Dashboard": "📊", "Registrar": "✏️", "Perfil": "👤", "Config": "⚙️"}
+        
+        for page in pages:
+            active_class = "active" if current_page == page else ""
+            st.markdown(f"""
+            <button class="nav-btn {active_class}" onclick="window.location.href='?page={page}'">
+                <span>{icons[page]}</span>
+                <span>{page}</span>
+            </button>
+            """, unsafe_allow_html=True)
+        
+        st.markdown(f"<div style='margin-top:32px; font-size:0.7rem; color:{C.TEXT_DIM}; text-align:center;'>Olá, {user.get('name', 'Usuário')}</div>", unsafe_allow_html=True)
+    
+    # Streamlit não suporta onclick em HTML custom, então usamos radio normal mas estilizado
+    # Alternative: usar st.radio com custom CSS
+    page = st.radio("", pages, label_visibility="collapsed", index=pages.index(current_page) if current_page in pages else 0)
     return page
 
 # -----------------------------------------------------------------------------
@@ -662,24 +839,29 @@ def main():
     init_db()
     user = load_user(USER_ID)
     if user is None:
-        st.error("Erro ao carregar dados. Recarregue a página.")
+        st.error("Erro ao carregar dados.")
         return
+    
     weights = load_weights(USER_ID)
     checkins = load_checkins(USER_ID)
     xp = load_xp_total(USER_ID)
     scores = AnalyticsEngine.scores(checkins)
-    page = render_sidebar(user, xp)
+    consistency_data = AnalyticsEngine.last_14_consistency(checkins)
+    
+    # Navegação via query params
+    query_params = st.query_params
+    current_page = query_params.get("page", "Dashboard")
+    
+    page = render_sidebar(user, xp, current_page)
     
     if page == "Dashboard":
-        page_dashboard(user, weights, checkins, scores, xp)
+        page_dashboard(user, weights, checkins, scores, xp, consistency_data)
     elif page == "Registrar":
         page_register(USER_ID, user)
     elif page == "Perfil":
         page_profile(USER_ID, user)
     elif page == "Config":
         page_config(USER_ID)
-    elif page == "Telemetria":
-        page_telemetry(USER_ID)
 
 if __name__ == "__main__":
     main()
