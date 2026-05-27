@@ -1,65 +1,21 @@
-# app.py - EmagreSim v15.0 COMPLETO E CORRIGIDO
+# app.py - EmagreSim com Avatar Central
 import streamlit as st
 import random
 from datetime import datetime
 import time
 
-# -----------------------------------------------------------------------------
-# TENTAR IMPORTAR AVATAR (COM FALLBACK SIMPLES)
-# -----------------------------------------------------------------------------
-try:
-    from avatar_maker import tela_avatar, mostrar_avatar, celebrar_meta, modo_apoio
-    AVATAR_DISPONIVEL = True
-except ImportError:
-    AVATAR_DISPONIVEL = False
-    
-    # Funções fallback mínimas (caso avatar_maker não exista)
-    def tela_avatar():
-        st.markdown("<h1 style='text-align:center;'>🎨 Escolha seu Avatar</h1>", unsafe_allow_html=True)
-        genero = st.radio("Seu gênero", ["Masculino", "Feminino"], horizontal=True)
-        
-        if genero == "Masculino":
-            avatares = [("João", "👨"), ("Carlos", "🧔"), ("Pedro", "👦")]
-        else:
-            avatares = [("Maria", "👩"), ("Ana", "👧"), ("Julia", "💁")]
-        
-        cols = st.columns(3)
-        for i, (nome, emoji) in enumerate(avatares):
-            with cols[i]:
-                st.markdown(f'<div style="background: #4A90D9; width: 100px; height: 100px; border-radius: 50%; display: flex; align-items: center; justify-content: center; margin: 0 auto;"><span style="font-size: 3rem;">{emoji}</span></div>', unsafe_allow_html=True)
-                st.markdown(f"<p style='text-align:center;'><b>{nome}</b></p>", unsafe_allow_html=True)
-                if st.button(f"Escolher {nome}", key=f"fb_{i}", use_container_width=True):
-                    st.session_state["avatar_data"] = {"nome": nome, "emoji": emoji, "cor": "#4A90D9"}
-                    st.session_state["avatar_humor"] = "normal"
-                    st.session_state["pagina"] = "criar_conta"
-                    st.rerun()
-    
-    def mostrar_avatar():
-        if "avatar_data" in st.session_state:
-            avatar = st.session_state["avatar_data"]
-            st.markdown(f'<div style="font-size: 4rem; text-align: center;">{avatar["emoji"]}</div>', unsafe_allow_html=True)
-        else:
-            st.markdown('<div style="font-size: 3rem; text-align: center;">🔥</div>', unsafe_allow_html=True)
-    
-    def celebrar_meta():
-        st.balloons()
-        st.toast("🎉 PARABÉNS! Você atingiu sua meta! 🎉", icon="🏆")
-        time.sleep(2)
-    
-    def modo_apoio():
-        st.toast("💙 Você não está sozinho. Um dia de cada vez.", icon="🤗")
-        time.sleep(2)
+# Importar Avatar Central
+from avatar_maker import (
+    tela_avatar, mostrar_avatar, avatar_feliz, avatar_triste, avatar_bravo, avatar_cansado
+)
 
-# Configuração da página
 st.set_page_config(
     page_title="EmagreSim | Transformação",
     page_icon="🔥",
     layout="wide",
 )
 
-# -----------------------------------------------------------------------------
-# FUNÇÕES AUXILIARES
-# -----------------------------------------------------------------------------
+# Funções auxiliares
 def calcular_imc(peso, altura):
     return peso / (altura ** 2)
 
@@ -79,28 +35,7 @@ def mensagem_bom_dia():
         return "🌤️ Boa tarde! Continue firme."
     return "🌙 Boa noite! Amanhã é outro dia."
 
-def get_desafio_semanal():
-    desafios = [
-        ("💧 Beba 2L de água por 5 dias", 100),
-        ("🥚 Registre proteína em todas as refeições", 150),
-        ("🚶 Caminhe 30min por dia durante 4 dias", 120),
-        ("😴 Durma 7h+ por 5 dias", 100),
-    ]
-    return random.choice(desafios)
-
-def get_dica_dia():
-    dicas = [
-        "Beba um copo de água antes de cada refeição.",
-        "Durma 7-8h por noite para regular os hormônios.",
-        "Inclua proteína em todas as refeições para mais saciedade.",
-        "Não pule o café da manhã – ele ativa seu metabolismo.",
-        "Faça pequenas caminhadas após as refeições.",
-    ]
-    return random.choice(dicas)
-
-# -----------------------------------------------------------------------------
 # PÁGINA LOGIN
-# -----------------------------------------------------------------------------
 def pagina_login():
     st.markdown("<h1 style='text-align:center;'>🔥 EmagreSim</h1>", unsafe_allow_html=True)
     
@@ -137,9 +72,7 @@ def pagina_login():
                 st.session_state["pagina"] = "dashboard"
                 st.rerun()
 
-# -----------------------------------------------------------------------------
 # PÁGINA CRIAR CONTA
-# -----------------------------------------------------------------------------
 def pagina_criar_conta():
     st.markdown("<h1 style='text-align:center;'>🔥 Criar Conta</h1>", unsafe_allow_html=True)
     
@@ -152,9 +85,9 @@ def pagina_criar_conta():
                 st.rerun()
         with col2:
             with st.form("form_criar_conta"):
-                nome = st.text_input("Nome completo", placeholder="Seu nome")
-                email = st.text_input("E-mail", placeholder="seu@email.com")
-                senha = st.text_input("Senha", type="password", placeholder="••••••••")
+                nome = st.text_input("Nome completo")
+                email = st.text_input("E-mail")
+                senha = st.text_input("Senha", type="password")
                 
                 col_a, col_b = st.columns(2)
                 with col_a:
@@ -174,7 +107,7 @@ def pagina_criar_conta():
                             "sexo": "M" if sexo == "Masculino" else "F"
                         }
                         st.success(f"✅ Conta criada com sucesso, {nome}!")
-                        st.balloons()
+                        avatar_feliz()
                         st.session_state["pagina"] = "dashboard"
                         st.rerun()
     else:
@@ -187,9 +120,7 @@ def pagina_criar_conta():
         st.session_state["pagina"] = "login"
         st.rerun()
 
-# -----------------------------------------------------------------------------
 # PÁGINA DASHBOARD
-# -----------------------------------------------------------------------------
 def pagina_dashboard():
     usuario = st.session_state.get("usuario", None)
     if not usuario:
@@ -199,7 +130,6 @@ def pagina_dashboard():
             st.rerun()
         return
     
-    # Cabeçalho com avatar
     col_avatar, col_titulo = st.columns([1, 3])
     with col_avatar:
         mostrar_avatar()
@@ -207,12 +137,17 @@ def pagina_dashboard():
         st.markdown(f"<h1>Olá, {usuario['nome']}!</h1>", unsafe_allow_html=True)
         st.markdown(f"<p>{mensagem_bom_dia()}</p>", unsafe_allow_html=True)
     
-    # Botão de apoio emocional
-    col_apoio1, col_apoio2 = st.columns([3, 1])
-    with col_apoio2:
-        if st.button("😔 Estou para baixo", use_container_width=True):
-            modo_apoio()
-            st.rerun()
+    # Botões de interação com avatar
+    col_b1, col_b2, col_b3 = st.columns(3)
+    with col_b1:
+        if st.button("😊 Conquistei algo", use_container_width=True):
+            avatar_feliz()
+    with col_b2:
+        if st.button("😢 Preciso de apoio", use_container_width=True):
+            avatar_triste()
+    with col_b3:
+        if st.button("😠 Exagerei hoje", use_container_width=True):
+            avatar_bravo("Você exagerou nas calorias hoje. Amanhã é um novo dia!")
     
     # KPIs
     col1, col2, col3, col4 = st.columns(4)
@@ -226,7 +161,6 @@ def pagina_dashboard():
     with col4:
         st.metric("Plano", "Grátis")
     
-    # Previsão
     kg_restantes = usuario["peso_atual"] - usuario["peso_meta"]
     if kg_restantes > 0:
         st.info(f"📅 **Previsão:** Faltam {kg_restantes:.0f} kg para atingir sua meta!")
@@ -238,18 +172,18 @@ def pagina_dashboard():
             usuario["peso_atual"] = peso_hoje
             st.success(f"✅ Peso registrado: {peso_hoje:.1f} kg")
             if peso_hoje <= usuario["peso_meta"]:
-                celebrar_meta()
+                avatar_feliz()
             st.rerun()
     
-    # Desafio da semana
-    with st.expander("🏆 Desafio da Semana", expanded=True):
-        desafio, xp = get_desafio_semanal()
-        st.markdown(f"**{desafio}** ⚡ +{xp} XP")
-        st.progress(0.3, text="Progresso: 2/5 dias")
-    
-    # Dica do dia
-    with st.expander("💡 Dica do dia", expanded=False):
-        st.info(get_dica_dia())
+    # Simular refeição para testar avatar bravo
+    with st.expander("🍽️ Registrar Refeição", expanded=False):
+        calorias = st.number_input("Calorias (kcal)", 0, 2000, 500, 50)
+        if st.button("✅ Salvar Refeição", use_container_width=True):
+            if calorias > 1000:
+                avatar_bravo(f"Essa refeição teve {calorias} kcal. Que tal uma refeição mais leve amanhã?")
+            else:
+                st.success(f"✅ Refeição registrada: {calorias} kcal")
+            st.rerun()
     
     # Botão sair
     if st.button("🚪 Sair", use_container_width=True):
@@ -257,9 +191,7 @@ def pagina_dashboard():
         st.session_state["pagina"] = "login"
         st.rerun()
 
-# -----------------------------------------------------------------------------
 # MAIN
-# -----------------------------------------------------------------------------
 def main():
     if "pagina" not in st.session_state:
         st.session_state["pagina"] = "login"
