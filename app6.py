@@ -1,16 +1,7 @@
 # -*- coding: utf-8 -*-
 """
-EmagreSim v6.0 - Behavioral Health OS
-Arquivo único refatorado com:
-- Engines de domínio (Consistency, XP, Analytics)
-- Camada de serviços
-- Validação real de dados
-- Event tracking (telemetria)
-- Cache seletivo
-- Splash screen corrigida
-- Reset com confirmação dupla
-- Requests com retry
-- Fórmula de consistência realista
+EmagreSim v6.1 - Behavioral Health OS
+Correção definitiva: imagens via URL direta (sem PIL)
 """
 
 import streamlit as st
@@ -27,10 +18,6 @@ from typing import List, Dict, Optional, Tuple
 from scipy import stats
 import plotly.express as px
 import requests
-from io import BytesIO
-from PIL import Image
-from requests.adapters import HTTPAdapter
-from urllib3.util.retry import Retry
 
 # -----------------------------------------------------------------------------
 # 1. CONFIGURAÇÕES GLOBAIS
@@ -54,7 +41,23 @@ st.set_page_config(
 )
 
 # -----------------------------------------------------------------------------
-# 2. DESIGN SYSTEM
+# 2. URLs DAS IMAGENS (RAW DO GITHUB)
+# -----------------------------------------------------------------------------
+LOGO_URL = "https://raw.githubusercontent.com/raphaelcaxias/emagresim/main/logo.png"
+ICON_URL = "https://raw.githubusercontent.com/raphaelcaxias/emagresim/main/icon.png"
+SPLASH_URL = "https://raw.githubusercontent.com/raphaelcaxias/emagresim/main/splash.png"
+
+# -----------------------------------------------------------------------------
+# 3. SPLASH SCREEN (USANDO URL DIRETA - SEM PIL)
+# -----------------------------------------------------------------------------
+if "splash_shown" not in st.session_state:
+    with st.container():
+        st.image(SPLASH_URL, use_container_width=True)
+        st.session_state["splash_shown"] = True
+        st.rerun()
+
+# -----------------------------------------------------------------------------
+# 4. DESIGN SYSTEM
 # -----------------------------------------------------------------------------
 @dataclass
 class C:
@@ -147,59 +150,6 @@ div[data-testid="stMetric"] label {{ color: {C.MUTED} !important; font-size: .7r
 </style>
 """
 st.markdown(CUSTOM_CSS, unsafe_allow_html=True)
-
-# -----------------------------------------------------------------------------
-# 3. IMAGENS E ASSETS (COM RETRY E FALLBACK)
-# -----------------------------------------------------------------------------
-def get_session_with_retries() -> requests.Session:
-    session = requests.Session()
-    retries = Retry(
-        total=3,
-        backoff_factor=0.5,
-        status_forcelist=[500, 502, 503, 504]
-    )
-    session.mount('https://', HTTPAdapter(max_retries=retries))
-    return session
-
-def get_fallback_image() -> Optional[Image.Image]:
-    """Cria uma imagem simples de fallback (círculo com texto)"""
-    try:
-        img = Image.new('RGB', (200, 200), color=C.CARD)
-        return img
-    except:
-        return None
-
-def load_image_from_url(url: str) -> Optional[Image.Image]:
-    """Carrega imagem com retry e fallback. SEM CACHE (evita pickle error)"""
-    session = get_session_with_retries()
-    try:
-        response = session.get(url, timeout=10)
-        if response.status_code == 200:
-            return Image.open(BytesIO(response.content))
-    except Exception as e:
-        logger.warning(f"Erro ao carregar {url}: {e}")
-    return get_fallback_image()
-
-# URLs raw
-LOGO_URL = "https://raw.githubusercontent.com/raphaelcaxias/emagresim/main/logo.png"
-ICON_URL = "https://raw.githubusercontent.com/raphaelcaxias/emagresim/main/icon.png"
-SPLASH_URL = "https://raw.githubusercontent.com/raphaelcaxias/emagresim/main/splash.png"
-
-logo_img = load_image_from_url(LOGO_URL)
-icon_img = load_image_from_url(ICON_URL)
-splash_img = load_image_from_url(SPLASH_URL)
-
-# -----------------------------------------------------------------------------
-# 4. SPLASH SCREEN CORRIGIDA (SEM RERUN INFINITO)
-# -----------------------------------------------------------------------------
-if splash_img and "splash_shown" not in st.session_state:
-    with st.container():
-        st.image(splash_img, use_container_width=True)
-        st.session_state["splash_shown"] = True
-        # Pequeno delay visual antes de limpar
-        import time
-        time.sleep(0.5)
-        st.rerun()
 
 # -----------------------------------------------------------------------------
 # 5. DATABASE LAYER
@@ -340,24 +290,12 @@ class ConsistencyEngine:
     @staticmethod
     def calculate(calories: float, water_ml: int, sleep_hours: float, 
                   workout_minutes: int, mood_score: int) -> int:
-        """Fórmula realista de consistência (0-100)"""
-        # Calorias: 1800 é ideal, desvio máximo 800kcal
         cal_score = max(0, 100 - abs(calories - 1800) / 18)
         cal_score = min(cal_score, 100)
-        
-        # Água: 2000ml baseline, 3000ml excelente
         water_score = min(water_ml / 35, 100)
-        
-        # Sono: 7h baseline, 8h+ excelente
         sleep_score = min(sleep_hours / 8.5 * 100, 100)
-        
-        # Treino: 30min baseline, 60min excelente
         workout_score = min(workout_minutes / 45 * 100, 100)
-        
-        # Humor: influência moderada (10-100)
         mood_score_norm = mood_score * 10
-        
-        # Ponderadores realistas
         consistency = (
             cal_score * 0.30 +
             water_score * 0.15 +
@@ -370,7 +308,7 @@ class ConsistencyEngine:
 class XPEngine:
     @staticmethod
     def calculate(consistency: int, sleep_hours: float, workout_minutes: int) -> int:
-        xp = 10  # base
+        xp = 10
         if consistency >= 80:
             xp += 20
         if sleep_hours >= 8:
@@ -381,7 +319,6 @@ class XPEngine:
     
     @staticmethod
     def can_earn(uid: int, source: str) -> bool:
-        """Anti-fraude: cooldown de 12h para mesma fonte"""
         with db() as conn:
             row = conn.execute(
                 "SELECT MAX(created_at) FROM xp_logs WHERE user_id=? AND source=?",
@@ -444,7 +381,6 @@ def track_event(uid: int, event_name: str, metadata: dict = None):
             "INSERT INTO user_events(user_id, event_name, metadata) VALUES(?,?,?)",
             (uid, event_name, json.dumps(metadata or {}))
         )
-    logger.info(f"Event: {event_name}")
 
 @st.cache_data(ttl=CACHE_TTL)
 def load_all(uid: int = USER_ID) -> Tuple[Dict, pd.DataFrame, pd.DataFrame]:
@@ -464,15 +400,6 @@ def load_xp(uid: int = USER_ID) -> int:
     return int(row["total"]) if row else 0
 
 def save_checkin(uid: int, data: dict) -> int:
-    valid, msg = DataValidator.validate_weight(
-        data.get("weight", 80), 
-        data.get("body_fat", 20), 
-        data.get("lean_mass", 35)
-    ) if "weight" in data else (True, "")
-    if not valid:
-        st.error(f"❌ {msg}")
-        return 0
-    
     with db() as conn:
         existing = conn.execute("SELECT id FROM daily_checkins WHERE user_id=? AND date=?", (uid, data["date"])).fetchone()
         if existing:
@@ -724,10 +651,7 @@ def page_telemetry(uid: int):
 def render_sidebar(user: Dict, xp: int) -> str:
     lvl_name, _, lvl_pct = LevelEngine.info(xp)
     with st.sidebar:
-        if logo_img:
-            st.image(logo_img, width=120)
-        else:
-            st.markdown("<h2>⚡ EmagreSim</h2>", unsafe_allow_html=True)
+        st.image(LOGO_URL, width=120)
         st.markdown(card(kpi("NIVEL", lvl_name, "c-purple", f"{xp} XP") + progress_bar(lvl_pct)), unsafe_allow_html=True)
         page = st.radio("Navegacao", ["Dashboard", "Registrar", "Perfil", "Config", "Telemetria"], label_visibility="collapsed")
         st.markdown(f"<div style='margin-top:20px;font-size:.75rem;color:{C.MUTED};'>Ola, {user.get('name', 'Usuario')}</div>", unsafe_allow_html=True)
