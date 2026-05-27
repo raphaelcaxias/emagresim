@@ -1,11 +1,11 @@
-# app.py - EmagreSim v15.0 COMPLETO COM AVATAR INTERATIVO
+# app.py - EmagreSim v15.0 COMPLETO E CORRIGIDO
 import streamlit as st
 import random
 from datetime import datetime
 import time
 
 # -----------------------------------------------------------------------------
-# TENTAR IMPORTAR AVATAR (COM FALLBACK)
+# TENTAR IMPORTAR AVATAR (COM FALLBACK SIMPLES)
 # -----------------------------------------------------------------------------
 try:
     from avatar_maker import tela_avatar, mostrar_avatar, celebrar_meta, modo_apoio
@@ -13,7 +13,7 @@ try:
 except ImportError:
     AVATAR_DISPONIVEL = False
     
-    # Funções fallback simplificadas
+    # Funções fallback mínimas (caso avatar_maker não exista)
     def tela_avatar():
         st.markdown("<h1 style='text-align:center;'>🎨 Escolha seu Avatar</h1>", unsafe_allow_html=True)
         genero = st.radio("Seu gênero", ["Masculino", "Feminino"], horizontal=True)
@@ -79,6 +79,25 @@ def mensagem_bom_dia():
         return "🌤️ Boa tarde! Continue firme."
     return "🌙 Boa noite! Amanhã é outro dia."
 
+def get_desafio_semanal():
+    desafios = [
+        ("💧 Beba 2L de água por 5 dias", 100),
+        ("🥚 Registre proteína em todas as refeições", 150),
+        ("🚶 Caminhe 30min por dia durante 4 dias", 120),
+        ("😴 Durma 7h+ por 5 dias", 100),
+    ]
+    return random.choice(desafios)
+
+def get_dica_dia():
+    dicas = [
+        "Beba um copo de água antes de cada refeição.",
+        "Durma 7-8h por noite para regular os hormônios.",
+        "Inclua proteína em todas as refeições para mais saciedade.",
+        "Não pule o café da manhã – ele ativa seu metabolismo.",
+        "Faça pequenas caminhadas após as refeições.",
+    ]
+    return random.choice(dicas)
+
 # -----------------------------------------------------------------------------
 # PÁGINA LOGIN
 # -----------------------------------------------------------------------------
@@ -133,9 +152,9 @@ def pagina_criar_conta():
                 st.rerun()
         with col2:
             with st.form("form_criar_conta"):
-                nome = st.text_input("Nome completo")
-                email = st.text_input("E-mail")
-                senha = st.text_input("Senha", type="password")
+                nome = st.text_input("Nome completo", placeholder="Seu nome")
+                email = st.text_input("E-mail", placeholder="seu@email.com")
+                senha = st.text_input("Senha", type="password", placeholder="••••••••")
                 
                 col_a, col_b = st.columns(2)
                 with col_a:
@@ -193,6 +212,7 @@ def pagina_dashboard():
     with col_apoio2:
         if st.button("😔 Estou para baixo", use_container_width=True):
             modo_apoio()
+            st.rerun()
     
     # KPIs
     col1, col2, col3, col4 = st.columns(4)
@@ -211,10 +231,10 @@ def pagina_dashboard():
     if kg_restantes > 0:
         st.info(f"📅 **Previsão:** Faltam {kg_restantes:.0f} kg para atingir sua meta!")
     
-    # Simular registro de peso
+    # Registrar Peso
     with st.expander("⚖️ Registrar Peso Hoje", expanded=False):
         peso_hoje = st.number_input("Peso atual (kg)", 30.0, 300.0, usuario["peso_atual"], 0.1)
-        if st.button("Salvar Peso", use_container_width=True):
+        if st.button("✅ Salvar Peso", use_container_width=True):
             usuario["peso_atual"] = peso_hoje
             st.success(f"✅ Peso registrado: {peso_hoje:.1f} kg")
             if peso_hoje <= usuario["peso_meta"]:
@@ -223,26 +243,13 @@ def pagina_dashboard():
     
     # Desafio da semana
     with st.expander("🏆 Desafio da Semana", expanded=True):
-        desafios = [
-            ("💧 Beba 2L de água por 5 dias", 100),
-            ("🥚 Registre proteína em todas as refeições", 150),
-            ("🚶 Caminhe 30min por dia durante 4 dias", 120),
-            ("😴 Durma 7h+ por 5 dias", 100),
-        ]
-        desafio, xp = random.choice(desafios)
+        desafio, xp = get_desafio_semanal()
         st.markdown(f"**{desafio}** ⚡ +{xp} XP")
         st.progress(0.3, text="Progresso: 2/5 dias")
     
     # Dica do dia
     with st.expander("💡 Dica do dia", expanded=False):
-        dicas = [
-            "Beba um copo de água antes de cada refeição.",
-            "Durma 7-8h por noite para regular os hormônios.",
-            "Inclua proteína em todas as refeições para mais saciedade.",
-            "Não pule o café da manhã – ele ativa seu metabolismo.",
-            "Faça pequenas caminhadas após as refeições.",
-        ]
-        st.info(random.choice(dicas))
+        st.info(get_dica_dia())
     
     # Botão sair
     if st.button("🚪 Sair", use_container_width=True):
