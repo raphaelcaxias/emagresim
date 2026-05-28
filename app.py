@@ -1,5 +1,5 @@
-# app.py - EmagreSim v21.0 (Correção Definitiva)
-# Melhorias: Gráficos em português, tratamento de rate limit, preparação para Google Login
+# app.py - EmagreSim v22.0 (Com Login Google)
+# Funcionalidades: Login Google, Login Email, Cadastro, Modo Demo
 # Database: Supabase (Auth + Storage + Tables)
 # Deploy: Streamlit Cloud
 
@@ -83,14 +83,12 @@ def validar_email(email):
     return re.match(padrao, email) is not None
 
 def traduzir_erro(mensagem_original):
-    """Traduz mensagens de erro do Supabase para português"""
     erros = {
-        "email rate limit exceeded": "⚠️ MUITAS TENTATIVAS PARA ESTE E-MAIL.\n\nO sistema de segurança bloqueou temporariamente este e-mail.\n\n✅ SOLUÇÕES:\n• Aguarde 1 hora e tente novamente\n• Use outro e-mail para criar sua conta\n• Use o MODO DEMONSTRAÇÃO para testar o app",
-        "Invalid login credentials": "❌ E-mail ou senha incorretos. Verifique seus dados.",
-        "User already registered": "📧 Este e-mail já está cadastrado. Faça login ou use outro e-mail.",
+        "email rate limit exceeded": "⚠️ MUITAS TENTATIVAS PARA ESTE E-MAIL.\n\nO sistema de segurança bloqueou temporariamente este e-mail.\n\n✅ SOLUÇÕES:\n• Aguarde 1 hora e tente novamente\n• Use outro e-mail\n• Use o MODO DEMONSTRAÇÃO",
+        "Invalid login credentials": "❌ E-mail ou senha incorretos.",
+        "User already registered": "📧 Este e-mail já está cadastrado.",
         "Password should be at least 6 characters": "🔒 A senha deve ter pelo menos 6 caracteres.",
         "Network error": "🌐 Erro de rede. Verifique sua conexão.",
-        "Email not confirmed": "✉️ E-mail não confirmado. Verifique sua caixa de entrada.",
     }
     for chave, valor in erros.items():
         if chave in mensagem_original.lower():
@@ -135,7 +133,6 @@ def salvar_peso(user_id, peso, data_registro):
         return False
 
 def verificar_email_existe(email):
-    """Verifica se o e-mail já está cadastrado"""
     try:
         result = supabase.auth.admin.list_users()
         for user in result.users:
@@ -146,7 +143,7 @@ def verificar_email_existe(email):
         return False
 
 # =============================================================================
-# 5. PÁGINAS
+# 5. PÁGINA LOGIN
 # =============================================================================
 def pagina_login():
     st.markdown("<h1 style='text-align:center;'>🌱 EmagreSim</h1>", unsafe_allow_html=True)
@@ -157,6 +154,20 @@ def pagina_login():
         tab1, tab2 = st.tabs(["🔐 Login", "📝 Criar Conta"])
         
         with tab1:
+            # Botão Login com Google
+            col_g1, col_g2, col_g3 = st.columns([1, 2, 1])
+            with col_g2:
+                if st.button("🔴 Entrar com Google", use_container_width=True):
+                    try:
+                        # Redirect para OAuth do Supabase
+                        redirect_url = f"{supabase_url}/auth/v1/authorize?provider=google&redirect_to={st.secrets.get('REDIRECT_URL', 'https://emagresim.streamlit.app')}"
+                        st.markdown(f'<meta http-equiv="refresh" content="0; url={redirect_url}">', unsafe_allow_html=True)
+                    except Exception as e:
+                        st.error(f"Erro: {e}")
+            
+            st.markdown("---")
+            st.markdown("### Ou entre com e-mail")
+            
             with st.form("login_form"):
                 email = st.text_input("E-mail", placeholder="seu@email.com")
                 password = st.text_input("Senha", type="password", placeholder="••••••••")
@@ -174,22 +185,9 @@ def pagina_login():
                     else:
                         st.warning("Digite e-mail e senha.")
             
-            # Botão "Esqueci minha senha" fora do formulário
             if st.button("🔑 Esqueci minha senha", use_container_width=True):
                 st.session_state["pagina"] = "recuperar_senha"
                 st.rerun()
-            
-            st.markdown("---")
-            st.markdown("### 🔑 Ou entre com")
-            col_g1, col_g2 = st.columns(2)
-            with col_g1:
-                if st.button("📧 E-mail", use_container_width=True, disabled=True):
-                    pass
-                st.caption("(em breve)")
-            with col_g2:
-                if st.button("🔴 Google", use_container_width=True, disabled=True):
-                    pass
-                st.caption("(em breve)")
         
         with tab2:
             with st.form("criar_conta_form"):
@@ -199,7 +197,7 @@ def pagina_login():
                 
                 st.markdown("---")
                 st.markdown("### 📊 Seus dados (opcional)")
-                st.caption("Você pode preencher agora ou depois no seu perfil.")
+                st.caption("Você pode preencher depois no seu perfil.")
                 
                 col_idade, col_altura = st.columns(2)
                 with col_idade:
@@ -215,29 +213,25 @@ def pagina_login():
                 
                 genero = st.selectbox("Gênero", ["Masculino", "Feminino", "Não binário", "Prefiro não informar"])
                 
-                # Botão de ajuda para rate limit
                 st.info("💡 **Dica:** Se aparecer erro de 'muitas tentativas', use outro e-mail ou aguarde 1 hora.")
                 
                 if st.form_submit_button("Criar conta", use_container_width=True):
                     if not email or not senha or not nome:
                         st.error("Preencha e-mail, senha e nome.")
                     elif not validar_email(email):
-                        st.error("E-mail inválido. Digite um endereço válido (ex: nome@dominio.com).")
+                        st.error("E-mail inválido.")
                     elif len(senha) < 6:
                         st.error("A senha deve ter pelo menos 6 caracteres.")
                     else:
-                        # Verificar se e-mail já existe
                         if verificar_email_existe(email):
-                            st.error("📧 Este e-mail já está cadastrado. Faça login ou use outro e-mail.")
+                            st.error("📧 Este e-mail já está cadastrado.")
                         else:
                             try:
                                 resp = supabase.auth.sign_up({"email": email, "password": senha})
-                                
                                 if resp.user:
                                     user_id = resp.user.id
                                     altura = normalizar_altura(altura_input)
                                     
-                                    # Inserir perfil
                                     supabase.table("users").insert({
                                         "id": user_id,
                                         "nome": nome,
@@ -250,7 +244,6 @@ def pagina_login():
                                         "data_inicio_mes": date.today().isoformat()
                                     }).execute()
                                     
-                                    # Registrar peso inicial
                                     supabase.table("weight_logs").insert({
                                         "user_id": user_id,
                                         "peso_kg": peso_atual,
@@ -258,23 +251,21 @@ def pagina_login():
                                         "nota": "Peso inicial"
                                     }).execute()
                                     
-                                    st.success("✅ Conta criada com sucesso! Faça login.")
+                                    st.success("✅ Conta criada! Faça login.")
                                     st.balloons()
                                     time.sleep(1)
                                     st.rerun()
-                                else:
-                                    st.error("Erro ao criar usuário. Tente novamente.")
                             except Exception as e:
-                                erro_msg = traduzir_erro(str(e))
-                                st.error(erro_msg)
-                                if "MUITAS TENTATIVAS" in erro_msg:
-                                    st.info("🔹 **Soluções:**\n• Aguarde 1 hora\n• Use outro e-mail\n• Clique em 'Modo demonstração' para testar o app")
+                                st.error(traduzir_erro(str(e))))
         
         st.markdown("---")
         if st.button("🧪 Modo demonstração (Adriano)", use_container_width=True):
             st.session_state["pagina"] = "demo"
             st.rerun()
 
+# =============================================================================
+# 6. RECUPERAR SENHA
+# =============================================================================
 def pagina_recuperar_senha():
     st.markdown("<h1 style='text-align:center;'>🔑 Recuperar Senha</h1>", unsafe_allow_html=True)
     
@@ -285,8 +276,7 @@ def pagina_recuperar_senha():
             if email:
                 try:
                     supabase.auth.reset_password_for_email(email)
-                    st.success("✅ Link de recuperação enviado para seu e-mail!")
-                    st.info("Verifique sua caixa de entrada e spam. O link é válido por 24 horas.")
+                    st.success("✅ Link enviado! Verifique seu e-mail.")
                     time.sleep(2)
                     st.session_state["pagina"] = "login"
                     st.rerun()
@@ -295,13 +285,16 @@ def pagina_recuperar_senha():
             else:
                 st.warning("Digite seu e-mail.")
     
-    if st.button("← Voltar para login", use_container_width=True):
+    if st.button("← Voltar", use_container_width=True):
         st.session_state["pagina"] = "login"
         st.rerun()
 
+# =============================================================================
+# 7. MODO DEMONSTRAÇÃO
+# =============================================================================
 def pagina_demo():
     st.markdown("<h1 style='text-align:center;'>🧪 Modo Demonstração - Adriano</h1>", unsafe_allow_html=True)
-    st.info("📌 Este é o modo demonstração com dados do Adriano (108kg, meta 2kg/mês). Os dados não são salvos permanentemente.")
+    st.info("📌 Dados do Adriano (108kg, meta 2kg/mês). Nada é salvo permanentemente.")
     
     usuario_demo = {
         "nome": "Adriano",
@@ -333,7 +326,7 @@ def pagina_demo():
     
     k1, k2, k3, k4 = st.columns(4)
     with k1:
-        st.metric("Peso Atual", f"{peso_atual:.1f} kg", f"{progresso:+.1f} kg este mês")
+        st.metric("Peso Atual", f"{peso_atual:.1f} kg", f"{progresso:+.1f} kg")
     with k2:
         imc = calcular_imc(peso_atual, usuario_demo["altura"])
         st.metric("IMC", f"{imc:.1f}", "referência")
@@ -350,27 +343,24 @@ def pagina_demo():
         fig = px.line(df_pesos, x="registered_at", y="peso_kg", 
                       title="Evolução do Peso",
                       labels={"registered_at": "Data", "peso_kg": "Peso (kg)"})
-        fig.update_layout(height=350, margin=dict(l=0, r=0, t=40, b=0))
+        fig.update_layout(height=350)
         st.plotly_chart(fig, use_container_width=True)
     
     st.markdown("### 🍽️ Últimas refeições (demo)")
     refeicoes_demo = [
         {"descricao": "Arroz, feijão, frango grelhado", "calorias": 550, "data": date.today()},
         {"descricao": "Omelete com espinafre", "calorias": 350, "data": date.today() - timedelta(days=1)},
-        {"descricao": "Salada de quinoa com frango", "calorias": 450, "data": date.today() - timedelta(days=2)},
     ]
-    for r in refeicoes_demo[:5]:
-        cols = st.columns([3, 1, 1])
-        with cols[0]:
-            st.write(f"**{r['descricao']}**")
-            st.caption(r['data'].strftime("%d/%m/%Y"))
-        with cols[1]:
-            st.write(f"{r['calorias']} kcal")
+    for r in refeicoes_demo:
+        st.write(f"**{r['descricao']}** - {r['calorias']} kcal ({r['data'].strftime('%d/%m')})")
     
-    if st.button("← Voltar ao login", use_container_width=True):
+    if st.button("← Voltar", use_container_width=True):
         st.session_state.clear()
         st.rerun()
 
+# =============================================================================
+# 8. DASHBOARD
+# =============================================================================
 def pagina_dashboard():
     user_id = st.session_state.get("user_id")
     if not user_id:
@@ -380,8 +370,8 @@ def pagina_dashboard():
     
     user = carregar_usuario(user_id)
     if not user:
-        st.error("Usuário não encontrado. Faça login novamente.")
-        if st.button("Voltar ao login"):
+        st.error("Usuário não encontrado.")
+        if st.button("Voltar"):
             st.session_state.clear()
             st.rerun()
         return
@@ -407,7 +397,7 @@ def pagina_dashboard():
     
     k1, k2, k3, k4 = st.columns(4)
     with k1:
-        st.metric("Peso Atual", f"{peso_atual:.1f} kg", f"{progresso:+.1f} kg este mês")
+        st.metric("Peso Atual", f"{peso_atual:.1f} kg", f"{progresso:+.1f} kg")
     with k2:
         imc = calcular_imc(peso_atual, user.get("altura", 1.75))
         st.metric("IMC", f"{imc:.1f}", "referência")
@@ -424,42 +414,25 @@ def pagina_dashboard():
         fig = px.line(df_pesos, x="registered_at", y="peso_kg",
                       title="Evolução do Peso",
                       labels={"registered_at": "Data", "peso_kg": "Peso (kg)"})
-        fig.update_layout(height=350, margin=dict(l=0, r=0, t=40, b=0))
+        fig.update_layout(height=350)
         st.plotly_chart(fig, use_container_width=True)
     
     with st.expander("⚖️ Registrar peso hoje"):
-        novo_peso = st.number_input("Peso (kg)", min_value=30.0, max_value=300.0, value=peso_atual, step=0.1)
-        if st.button("✅ Salvar peso"):
+        novo_peso = st.number_input("Peso (kg)", value=peso_atual, step=0.1)
+        if st.button("Salvar peso"):
             if salvar_peso(user_id, novo_peso, date.today()):
                 st.success("Peso registrado!")
-                time.sleep(1)
                 st.rerun()
     
-    with st.expander("🍽️ Registrar refeição"):
-        descricao = st.text_input("O que você comeu?")
-        calorias = st.number_input("Calorias (kcal)", min_value=0, max_value=2000, value=300, step=50)
-        if st.button("✅ Salvar refeição"):
-            if descricao:
-                st.success("Refeição registrada!")
-                time.sleep(1)
-                st.rerun()
-            else:
-                st.warning("Digite uma descrição.")
+    st.markdown("🫂 Dias difíceis acontecem. Você não está sozinho.")
     
-    st.markdown("""
-    <div style="background: rgba(255,255,255,0.03); border-radius: 20px; padding: 15px; text-align: center; margin: 15px 0;">
-        <span style="font-size: 1.2rem;">🫂</span>
-        <p style="margin: 5px 0 0 0; font-size: 0.85rem;">Dias difíceis acontecem. Você não está sozinho.</p>
-    </div>
-    """, unsafe_allow_html=True)
-    
-    if st.button("🚪 Sair", use_container_width=True):
+    if st.button("Sair", use_container_width=True):
         supabase.auth.sign_out()
         st.session_state.clear()
         st.rerun()
 
 # =============================================================================
-# 6. MAIN
+# 9. MAIN
 # =============================================================================
 def main():
     if "pagina" not in st.session_state:
