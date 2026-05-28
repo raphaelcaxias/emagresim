@@ -1,23 +1,6 @@
 # utils/helpers.py
 from datetime import datetime
-import locale
-
-def calcular_imc(peso: float, altura: float) -> float:
-    if altura <= 0:
-        return 0
-    return peso / (altura ** 2)
-
-def calcular_avatar(percentual: float):
-    if percentual >= 100:
-        return "🏆", "Conquista! Você atingiu sua meta mensal!"
-    elif percentual >= 75:
-        return "⚡", "Quase lá! Continue firme."
-    elif percentual >= 50:
-        return "🌱", "Metade do caminho. Você está evoluindo."
-    elif percentual >= 25:
-        return "🔥", "Primeiros resultados! Continue assim."
-    else:
-        return "🌅", "Todo recomeço é uma semente. Confie no processo."
+from utils.constants import MENSAGENS_AVATAR
 
 def mensagem_bom_dia():
     hora = datetime.now().hour
@@ -26,6 +9,17 @@ def mensagem_bom_dia():
     elif hora < 18:
         return "🌤️ Boa tarde! Continue firme."
     return "🌙 Boa noite! Amanhã é outro dia."
+
+def calcular_imc(peso, altura):
+    if altura <= 0:
+        return 0
+    return peso / (altura ** 2)
+
+def calcular_avatar(percentual):
+    for limite in [100, 75, 50, 25, 0]:
+        if percentual >= limite:
+            return MENSAGENS_AVATAR[limite]
+    return MENSAGENS_AVATAR[0]
 
 def formatar_data(data):
     return data.strftime("%d/%m/%Y")
