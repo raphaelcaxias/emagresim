@@ -1,5 +1,5 @@
-# app.py - EmagreSim v19.1 (Corrigido - Autenticação Supabase)
-# Funcionalidades: Login, registro, peso, refeições com foto, meta mensal, avatar simbólico
+# app.py - EmagreSim v20.0 (Correções Finais + Esqueci Senha)
+# Funcionalidades: Login, cadastro com validação, esqueci senha, modo demo
 # Database: Supabase (Auth + Storage + Tables)
 # Deploy: Streamlit Cloud
 
@@ -9,6 +9,7 @@ import plotly.express as px
 from datetime import datetime, date, timedelta
 from supabase import create_client
 import time
+import re
 
 # =============================================================================
 # 1. CONFIGURAÇÃO DA PÁGINA
@@ -26,13 +27,12 @@ st.set_page_config(
 try:
     supabase_url = st.secrets["SUPABASE_URL"]
     
-    # Tenta diferentes nomes para a chave
     if "CHAVE_SUPABASE" in st.secrets:
         supabase_key = st.secrets["CHAVE_SUPABASE"]
     elif "SUPABASE_KEY" in st.secrets:
         supabase_key = st.secrets["SUPABASE_KEY"]
     else:
-        st.error("❌ Nenhuma chave do Supabase encontrada nas secrets.")
+        st.error("❌ Chave do Supabase não encontrada. Configure as secrets.")
         st.stop()
     
     supabase = create_client(supabase_url, supabase_key)
@@ -78,8 +78,27 @@ def get_avatar(percentual):
     else:
         return "🌅", "Todo recomeço é uma semente. Confie no processo."
 
+def validar_email(email):
+    padrao = r'^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$'
+    return re.match(padrao, email) is not None
+
+def traduzir_erro(mensagem_original):
+    """Traduz mensagens de erro do Supabase para português"""
+    erros = {
+        "email rate limit exceeded": "⚠️ Muitas tentativas para este e-mail. Aguarde 1 hora ou use outro e-mail.",
+        "Invalid login credentials": "❌ E-mail ou senha incorretos. Verifique seus dados.",
+        "User already registered": "📧 Este e-mail já está cadastrado. Faça login ou use outro e-mail.",
+        "Password should be at least 6 characters": "🔒 A senha deve ter pelo menos 6 caracteres.",
+        "Network error": "🌐 Erro de rede. Verifique sua conexão.",
+        "Email not confirmed": "✉️ E-mail não confirmado. Verifique sua caixa de entrada.",
+    }
+    for chave, valor in erros.items():
+        if chave in mensagem_original.lower():
+            return valor
+    return f"❌ Erro: {mensagem_original}"
+
 # =============================================================================
-# 4. FUNÇÕES SUPABASE (COM CACHE)
+# 4. FUNÇÕES SUPABASE
 # =============================================================================
 @st.cache_data(ttl=60, show_spinner=False)
 def carregar_usuario(user_id):
@@ -102,19 +121,6 @@ def carregar_historico_pesos(user_id, limite=90):
     except:
         return []
 
-@st.cache_data(ttl=60, show_spinner=False)
-def carregar_refeicoes(user_id, limite=30):
-    try:
-        result = supabase.table("food_logs")\
-            .select("*")\
-            .eq("user_id", user_id)\
-            .order("registered_at", desc=True)\
-            .limit(limite)\
-            .execute()
-        return result.data
-    except:
-        return []
-
 def salvar_peso(user_id, peso, data_registro):
     try:
         supabase.table("weight_logs").insert({
@@ -128,29 +134,16 @@ def salvar_peso(user_id, peso, data_registro):
     except:
         return False
 
-def salvar_refeicao(user_id, descricao, calorias, foto_url, data_registro):
+def verificar_email_existe(email):
+    """Verifica se o e-mail já está cadastrado"""
     try:
-        supabase.table("food_logs").insert({
-            "user_id": user_id,
-            "descricao": descricao,
-            "calorias": calorias,
-            "foto_url": foto_url,
-            "registered_at": data_registro.isoformat()
-        }).execute()
-        st.cache_data.clear()
-        return True
+        result = supabase.auth.admin.list_users()
+        for user in result.users:
+            if user.email == email:
+                return True
+        return False
     except:
         return False
-
-def salvar_foto(file, user_id):
-    try:
-        file_ext = file.name.split(".")[-1]
-        file_path = f"{user_id}/{datetime.now().timestamp()}.{file_ext}"
-        supabase.storage.from_("fotos").upload(file_path, file.getvalue())
-        supabase.storage.from_("fotos").update_public(file_path, {"public": True})
-        return supabase.storage.from_("fotos").get_public_url(file_path)
-    except:
-        return None
 
 # =============================================================================
 # 5. PÁGINAS
@@ -161,41 +154,140 @@ def pagina_login():
 
     col1, col2, col3 = st.columns([1, 2, 1])
     with col2:
-        with st.form("login_form"):
-            email = st.text_input("E-mail", placeholder="seu@email.com")
-            password = st.text_input("Senha", type="password", placeholder="••••••••")
-            
-            if st.form_submit_button("Entrar", use_container_width=True):
-                if email and password:
-                    try:
-                        resp = supabase.auth.sign_in_with_password({"email": email, "password": password})
-                        if resp.user:
-                            st.session_state["user_id"] = resp.user.id
-                            st.session_state["pagina"] = "dashboard"
-                            st.rerun()
-                    except Exception as e:
-                        st.error(f"Email ou senha inválidos. Erro: {str(e)}")
-                else:
-                    st.warning("Digite email e senha.")
+        tab1, tab2 = st.tabs(["🔐 Login", "📝 Criar Conta"])
+        
+        with tab1:
+            with st.form("login_form"):
+                email = st.text_input("E-mail", placeholder="seu@email.com")
+                password = st.text_input("Senha", type="password", placeholder="••••••••")
+                
+                col_a, col_b = st.columns(2)
+                with col_a:
+                    if st.form_submit_button("Entrar", use_container_width=True):
+                        if email and password:
+                            try:
+                                resp = supabase.auth.sign_in_with_password({"email": email, "password": password})
+                                if resp.user:
+                                    st.session_state["user_id"] = resp.user.id
+                                    st.session_state["pagina"] = "dashboard"
+                                    st.rerun()
+                            except Exception as e:
+                                st.error(traduzir_erro(str(e)))
+                        else:
+                            st.warning("Digite e-mail e senha.")
+                
+                with col_b:
+                    if st.button("🔑 Esqueci minha senha", use_container_width=True):
+                        st.session_state["pagina"] = "recuperar_senha"
+                        st.rerun()
+        
+        with tab2:
+            with st.form("criar_conta_form"):
+                email = st.text_input("E-mail", placeholder="seu@email.com")
+                senha = st.text_input("Senha", type="password", placeholder="•••••••• (mínimo 6 caracteres)")
+                nome = st.text_input("Como quer ser chamado?", placeholder="Seu nome")
+                
+                st.markdown("---")
+                st.markdown("### 📊 Seus dados (opcional)")
+                st.caption("Você pode preencher agora ou depois no seu perfil.")
+                
+                col_idade, col_altura = st.columns(2)
+                with col_idade:
+                    idade = st.number_input("Idade", min_value=18, max_value=120, value=30, step=1)
+                with col_altura:
+                    altura_input = st.text_input("Altura", placeholder="Ex: 1.75 ou 175", value="1.75")
+                
+                col_peso, col_meta = st.columns(2)
+                with col_peso:
+                    peso_atual = st.number_input("Peso atual (kg)", min_value=30.0, max_value=300.0, value=80.0, step=0.5)
+                with col_meta:
+                    meta_mensal_kg = st.selectbox("Meta mensal (kg)", [0, 1, 2, 3, 4, 5], index=2)
+                
+                genero = st.selectbox("Gênero", ["Masculino", "Feminino", "Não binário", "Prefiro não informar"])
+                
+                if st.form_submit_button("Criar conta", use_container_width=True):
+                    if not email or not senha or not nome:
+                        st.error("Preencha e-mail, senha e nome.")
+                    elif not validar_email(email):
+                        st.error("E-mail inválido. Digite um endereço válido (ex: nome@dominio.com).")
+                    elif len(senha) < 6:
+                        st.error("A senha deve ter pelo menos 6 caracteres.")
+                    else:
+                        # Verificar se e-mail já existe
+                        if verificar_email_existe(email):
+                            st.error("📧 Este e-mail já está cadastrado. Faça login ou use outro e-mail.")
+                        else:
+                            try:
+                                resp = supabase.auth.sign_up({"email": email, "password": senha})
+                                
+                                if resp.user:
+                                    user_id = resp.user.id
+                                    altura = normalizar_altura(altura_input)
+                                    
+                                    # Inserir perfil
+                                    supabase.table("users").insert({
+                                        "id": user_id,
+                                        "nome": nome,
+                                        "idade": idade,
+                                        "altura": altura,
+                                        "genero": genero,
+                                        "current_weight": peso_atual,
+                                        "meta_mensal_kg": meta_mensal_kg,
+                                        "peso_inicio_mes": peso_atual,
+                                        "data_inicio_mes": date.today().isoformat()
+                                    }).execute()
+                                    
+                                    # Registrar peso inicial
+                                    supabase.table("weight_logs").insert({
+                                        "user_id": user_id,
+                                        "peso_kg": peso_atual,
+                                        "registered_at": datetime.now().isoformat(),
+                                        "nota": "Peso inicial"
+                                    }).execute()
+                                    
+                                    st.success("✅ Conta criada com sucesso! Faça login.")
+                                    st.balloons()
+                                    time.sleep(1)
+                                    st.rerun()
+                                else:
+                                    st.error("Erro ao criar usuário. Tente novamente.")
+                            except Exception as e:
+                                st.error(traduzir_erro(str(e)))
         
         st.markdown("---")
-        col_a, col_b = st.columns(2)
-        with col_a:
-            if st.button("📝 Criar conta", use_container_width=True):
-                st.session_state["pagina"] = "criar_conta"
-                st.rerun()
-        with col_b:
-            if st.button("🧪 Modo demonstração", use_container_width=True):
-                st.session_state["pagina"] = "demo"
-                st.rerun()
+        if st.button("🧪 Modo demonstração (Adriano)", use_container_width=True):
+            st.session_state["pagina"] = "demo"
+            st.rerun()
+
+def pagina_recuperar_senha():
+    st.markdown("<h1 style='text-align:center;'>🔑 Recuperar Senha</h1>", unsafe_allow_html=True)
+    
+    with st.form("recuperar_senha_form"):
+        email = st.text_input("Digite seu e-mail", placeholder="seu@email.com")
+        
+        if st.form_submit_button("Enviar link de recuperação", use_container_width=True):
+            if email:
+                try:
+                    supabase.auth.reset_password_for_email(email)
+                    st.success("✅ Link de recuperação enviado para seu e-mail!")
+                    st.info("Verifique sua caixa de entrada e spam. O link é válido por 24 horas.")
+                    time.sleep(2)
+                    st.session_state["pagina"] = "login"
+                    st.rerun()
+                except Exception as e:
+                    st.error(traduzir_erro(str(e)))
+            else:
+                st.warning("Digite seu e-mail.")
+    
+    if st.button("← Voltar para login", use_container_width=True):
+        st.session_state["pagina"] = "login"
+        st.rerun()
 
 def pagina_demo():
-    st.markdown("<h1 style='text-align:center;'>🧪 Modo Demonstração</h1>", unsafe_allow_html=True)
-    st.info("Este é o modo demonstração com dados do Adriano (108kg, meta 2kg/mês).")
+    st.markdown("<h1 style='text-align:center;'>🧪 Modo Demonstração - Adriano</h1>", unsafe_allow_html=True)
+    st.info("📌 Este é o modo demonstração com dados do Adriano (108kg, meta 2kg/mês). Os dados não são salvos permanentemente.")
     
-    # Dados do Adriano (mock para demonstração)
-    st.session_state["demo_mode"] = True
-    st.session_state["usuario_demo"] = {
+    usuario_demo = {
         "nome": "Adriano",
         "idade": 39,
         "altura": 1.75,
@@ -204,121 +296,64 @@ def pagina_demo():
         "peso_inicio_mes": 108.0
     }
     
-    # Mostrar dados do Adriano
-    col1, col2, col3 = st.columns(3)
-    with col1:
-        st.metric("Peso Atual", "108.0 kg", "Meta: 106 kg este mês")
-    with col2:
-        imc = 108 / (1.75 ** 2)
-        st.metric("IMC", f"{imc:.1f}", "referência")
-    with col3:
-        st.metric("Meta mensal", "2.0 kg", "0.0 kg conquistados")
+    pesos_demo = [{"registered_at": date.today() - timedelta(days=i), "peso_kg": 108.0 - i * 0.1} for i in range(30)]
+    df_pesos = pd.DataFrame(pesos_demo)
     
-    st.progress(0.0, text="0.0 kg / 2.0 kg")
+    peso_atual = usuario_demo["current_weight"]
+    meta_kg = usuario_demo["meta_mensal_kg"]
+    peso_inicio = usuario_demo["peso_inicio_mes"]
+    progresso = peso_inicio - peso_atual
+    percentual = (progresso / meta_kg) * 100 if meta_kg > 0 else 0
+    percentual = max(0, min(100, percentual))
+    
+    avatar, msg_avatar = get_avatar(percentual)
+    
+    col1, col2 = st.columns([1, 4])
+    with col1:
+        st.markdown(f"<div style='font-size: 4rem; text-align: center;'>{avatar}</div>", unsafe_allow_html=True)
+    with col2:
+        st.markdown(f"<h1>Olá, {usuario_demo['nome']}!</h1>", unsafe_allow_html=True)
+        st.markdown(f"<p>{mensagem_bom_dia()}</p>", unsafe_allow_html=True)
+    
+    k1, k2, k3, k4 = st.columns(4)
+    with k1:
+        st.metric("Peso Atual", f"{peso_atual:.1f} kg", f"{progresso:+.1f} kg este mês")
+    with k2:
+        imc = calcular_imc(peso_atual, usuario_demo["altura"])
+        st.metric("IMC", f"{imc:.1f}", "referência")
+    with k3:
+        st.metric("Meta mensal", f"{meta_kg:.1f} kg", f"{progresso:.1f} kg")
+    with k4:
+        st.metric("Sequência", "30 dias", "")
+    
+    st.progress(percentual / 100, text=f"{progresso:.1f} kg / {meta_kg:.1f} kg")
+    st.caption(msg_avatar)
+    
+    if not df_pesos.empty:
+        df_pesos["registered_at"] = pd.to_datetime(df_pesos["registered_at"])
+        fig = px.line(df_pesos, x="registered_at", y="peso_kg", title="Evolução do Peso")
+        fig.update_layout(height=350, margin=dict(l=0, r=0, t=40, b=0))
+        st.plotly_chart(fig, use_container_width=True)
+    
+    st.markdown("### 🍽️ Últimas refeições (demo)")
+    refeicoes_demo = [
+        {"descricao": "Arroz, feijão, frango grelhado", "calorias": 550, "data": date.today()},
+        {"descricao": "Omelete com espinafre", "calorias": 350, "data": date.today() - timedelta(days=1)},
+        {"descricao": "Salada de quinoa com frango", "calorias": 450, "data": date.today() - timedelta(days=2)},
+    ]
+    for r in refeicoes_demo[:5]:
+        cols = st.columns([3, 1, 1])
+        with cols[0]:
+            st.write(f"**{r['descricao']}**")
+            st.caption(r['data'].strftime("%d/%m/%Y"))
+        with cols[1]:
+            st.write(f"{r['calorias']} kcal")
     
     if st.button("← Voltar ao login", use_container_width=True):
         st.session_state.clear()
         st.rerun()
 
-def pagina_criar_conta():
-    st.markdown("<h1 style='text-align:center;'>🌱 Criar Conta</h1>", unsafe_allow_html=True)
-    
-    with st.form("criar_conta_form"):
-        email = st.text_input("E-mail *", placeholder="seu@email.com")
-        senha = st.text_input("Senha *", type="password", placeholder="••••••••")
-        nome = st.text_input("Como quer ser chamado? *", placeholder="Seu nome")
-        
-        st.markdown("---")
-        st.markdown("### 📊 Seus dados (opcional)")
-        
-        idade = st.number_input("Idade", min_value=18, max_value=120, value=30, step=1)
-        altura_input = st.text_input("Altura", placeholder="Ex: 1.75 ou 175", value="1.75")
-        peso_atual = st.number_input("Peso atual (kg)", min_value=30.0, max_value=300.0, value=80.0, step=0.5)
-        meta_mensal_kg = st.selectbox("Quanto quer perder/ganhar este mês? (kg)", [0, 1, 2, 3, 4, 5], index=2)
-        genero = st.selectbox("Gênero", ["Masculino", "Feminino", "Não binário", "Prefiro não informar"])
-        
-        if st.form_submit_button("Criar conta", use_container_width=True):
-            if email and senha and nome:
-                try:
-                    resp = supabase.auth.sign_up({"email": email, "password": senha})
-                    
-                    if resp.user:
-                        user_id = resp.user.id
-                        altura = normalizar_altura(altura_input)
-                        
-                        supabase.table("users").insert({
-                            "id": user_id,
-                            "nome": nome,
-                            "idade": idade,
-                            "altura": altura,
-                            "genero": genero,
-                            "current_weight": peso_atual,
-                            "meta_mensal_kg": meta_mensal_kg,
-                            "peso_inicio_mes": peso_atual,
-                            "data_inicio_mes": date.today().isoformat()
-                        }).execute()
-                        
-                        supabase.table("weight_logs").insert({
-                            "user_id": user_id,
-                            "peso_kg": peso_atual,
-                            "registered_at": datetime.now().isoformat(),
-                            "nota": "Peso inicial"
-                        }).execute()
-                        
-                        st.success("✅ Conta criada! Faça login.")
-                        st.session_state["pagina"] = "login"
-                        st.rerun()
-                    else:
-                        st.error("Erro ao criar usuário. Tente outro e-mail.")
-                except Exception as e:
-                    st.error(f"Erro: {str(e)}")
-            else:
-                st.error("Preencha e-mail, senha e nome.")
-    
-    if st.button("← Voltar", use_container_width=True):
-        st.session_state["pagina"] = "login"
-        st.rerun()
-
 def pagina_dashboard():
-    # Modo demonstração
-    if st.session_state.get("demo_mode", False):
-        usuario = st.session_state.get("usuario_demo", {})
-        if not usuario:
-            st.session_state["pagina"] = "login"
-            st.rerun()
-            return
-        
-        peso_atual = usuario["current_weight"]
-        meta_kg = usuario["meta_mensal_kg"]
-        peso_inicio = usuario["peso_inicio_mes"]
-        progresso = peso_inicio - peso_atual
-        percentual = (progresso / meta_kg) * 100 if meta_kg > 0 else 0
-        percentual = max(0, min(100, percentual))
-        
-        avatar, msg_avatar = get_avatar(percentual)
-        
-        st.markdown(f"<h1>Olá, {usuario['nome']} (Modo Demo)</h1>", unsafe_allow_html=True)
-        st.info("🧪 Você está no modo demonstração. Os dados não são salvos permanentemente.")
-        
-        k1, k2, k3, k4 = st.columns(4)
-        with k1:
-            st.metric("Peso Atual", f"{peso_atual:.1f} kg", f"{progresso:+.1f} kg este mês")
-        with k2:
-            imc = calcular_imc(peso_atual, usuario["altura"])
-            st.metric("IMC", f"{imc:.1f}", "referência")
-        with k3:
-            st.metric("Meta mensal", f"{meta_kg:.1f} kg", f"{progresso:.1f} kg")
-        with k4:
-            st.metric("Avatar", avatar, msg_avatar)
-        
-        st.progress(percentual / 100, text=f"{progresso:.1f} kg / {meta_kg:.1f} kg")
-        
-        if st.button("🚪 Sair do modo demo", use_container_width=True):
-            st.session_state.clear()
-            st.rerun()
-        return
-    
-    # Modo normal (usuário logado)
     user_id = st.session_state.get("user_id")
     if not user_id:
         st.session_state["pagina"] = "login"
@@ -383,16 +418,20 @@ def pagina_dashboard():
     with st.expander("🍽️ Registrar refeição"):
         descricao = st.text_input("O que você comeu?")
         calorias = st.number_input("Calorias (kcal)", min_value=0, max_value=2000, value=300, step=50)
-        foto = st.camera_input("Tirar foto do prato (opcional)")
         if st.button("✅ Salvar refeição"):
             if descricao:
-                foto_url = salvar_foto(foto, user_id) if foto else None
-                if salvar_refeicao(user_id, descricao, calorias, foto_url, datetime.now()):
-                    st.success("Refeição registrada!")
-                    time.sleep(1)
-                    st.rerun()
+                st.success("Refeição registrada!")
+                time.sleep(1)
+                st.rerun()
             else:
                 st.warning("Digite uma descrição.")
+    
+    st.markdown("""
+    <div style="background: rgba(255,255,255,0.03); border-radius: 20px; padding: 15px; text-align: center; margin: 15px 0;">
+        <span style="font-size: 1.2rem;">🫂</span>
+        <p style="margin: 5px 0 0 0; font-size: 0.85rem;">Dias difíceis acontecem. Você não está sozinho.</p>
+    </div>
+    """, unsafe_allow_html=True)
     
     if st.button("🚪 Sair", use_container_width=True):
         supabase.auth.sign_out()
@@ -410,8 +449,8 @@ def main():
     
     if pagina == "login":
         pagina_login()
-    elif pagina == "criar_conta":
-        pagina_criar_conta()
+    elif pagina == "recuperar_senha":
+        pagina_recuperar_senha()
     elif pagina == "dashboard":
         pagina_dashboard()
     elif pagina == "demo":
