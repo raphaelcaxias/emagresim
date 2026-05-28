@@ -1,4 +1,4 @@
-# app.py - EmagreSim v20.0 (Correções Finais + Esqueci Senha)
+# app.py - EmagreSim v20.1 (Corrigido - Botão Esqueci Senha fora do formulário)
 # Funcionalidades: Login, cadastro com validação, esqueci senha, modo demo
 # Database: Supabase (Auth + Storage + Tables)
 # Deploy: Streamlit Cloud
@@ -161,25 +161,23 @@ def pagina_login():
                 email = st.text_input("E-mail", placeholder="seu@email.com")
                 password = st.text_input("Senha", type="password", placeholder="••••••••")
                 
-                col_a, col_b = st.columns(2)
-                with col_a:
-                    if st.form_submit_button("Entrar", use_container_width=True):
-                        if email and password:
-                            try:
-                                resp = supabase.auth.sign_in_with_password({"email": email, "password": password})
-                                if resp.user:
-                                    st.session_state["user_id"] = resp.user.id
-                                    st.session_state["pagina"] = "dashboard"
-                                    st.rerun()
-                            except Exception as e:
-                                st.error(traduzir_erro(str(e)))
-                        else:
-                            st.warning("Digite e-mail e senha.")
-                
-                with col_b:
-                    if st.button("🔑 Esqueci minha senha", use_container_width=True):
-                        st.session_state["pagina"] = "recuperar_senha"
-                        st.rerun()
+                if st.form_submit_button("Entrar", use_container_width=True):
+                    if email and password:
+                        try:
+                            resp = supabase.auth.sign_in_with_password({"email": email, "password": password})
+                            if resp.user:
+                                st.session_state["user_id"] = resp.user.id
+                                st.session_state["pagina"] = "dashboard"
+                                st.rerun()
+                        except Exception as e:
+                            st.error(traduzir_erro(str(e)))
+                    else:
+                        st.warning("Digite e-mail e senha.")
+            
+            # Botão "Esqueci minha senha" fora do formulário
+            if st.button("🔑 Esqueci minha senha", use_container_width=True):
+                st.session_state["pagina"] = "recuperar_senha"
+                st.rerun()
         
         with tab2:
             with st.form("criar_conta_form"):
