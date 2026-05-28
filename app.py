@@ -1,5 +1,5 @@
-# app.py - EmagreSim v20.1 (Corrigido - Botão Esqueci Senha fora do formulário)
-# Funcionalidades: Login, cadastro com validação, esqueci senha, modo demo
+# app.py - EmagreSim v21.0 (Correção Definitiva)
+# Melhorias: Gráficos em português, tratamento de rate limit, preparação para Google Login
 # Database: Supabase (Auth + Storage + Tables)
 # Deploy: Streamlit Cloud
 
@@ -85,7 +85,7 @@ def validar_email(email):
 def traduzir_erro(mensagem_original):
     """Traduz mensagens de erro do Supabase para português"""
     erros = {
-        "email rate limit exceeded": "⚠️ Muitas tentativas para este e-mail. Aguarde 1 hora ou use outro e-mail.",
+        "email rate limit exceeded": "⚠️ MUITAS TENTATIVAS PARA ESTE E-MAIL.\n\nO sistema de segurança bloqueou temporariamente este e-mail.\n\n✅ SOLUÇÕES:\n• Aguarde 1 hora e tente novamente\n• Use outro e-mail para criar sua conta\n• Use o MODO DEMONSTRAÇÃO para testar o app",
         "Invalid login credentials": "❌ E-mail ou senha incorretos. Verifique seus dados.",
         "User already registered": "📧 Este e-mail já está cadastrado. Faça login ou use outro e-mail.",
         "Password should be at least 6 characters": "🔒 A senha deve ter pelo menos 6 caracteres.",
@@ -178,6 +178,18 @@ def pagina_login():
             if st.button("🔑 Esqueci minha senha", use_container_width=True):
                 st.session_state["pagina"] = "recuperar_senha"
                 st.rerun()
+            
+            st.markdown("---")
+            st.markdown("### 🔑 Ou entre com")
+            col_g1, col_g2 = st.columns(2)
+            with col_g1:
+                if st.button("📧 E-mail", use_container_width=True, disabled=True):
+                    pass
+                st.caption("(em breve)")
+            with col_g2:
+                if st.button("🔴 Google", use_container_width=True, disabled=True):
+                    pass
+                st.caption("(em breve)")
         
         with tab2:
             with st.form("criar_conta_form"):
@@ -202,6 +214,9 @@ def pagina_login():
                     meta_mensal_kg = st.selectbox("Meta mensal (kg)", [0, 1, 2, 3, 4, 5], index=2)
                 
                 genero = st.selectbox("Gênero", ["Masculino", "Feminino", "Não binário", "Prefiro não informar"])
+                
+                # Botão de ajuda para rate limit
+                st.info("💡 **Dica:** Se aparecer erro de 'muitas tentativas', use outro e-mail ou aguarde 1 hora.")
                 
                 if st.form_submit_button("Criar conta", use_container_width=True):
                     if not email or not senha or not nome:
@@ -250,7 +265,10 @@ def pagina_login():
                                 else:
                                     st.error("Erro ao criar usuário. Tente novamente.")
                             except Exception as e:
-                                st.error(traduzir_erro(str(e)))
+                                erro_msg = traduzir_erro(str(e))
+                                st.error(erro_msg)
+                                if "MUITAS TENTATIVAS" in erro_msg:
+                                    st.info("🔹 **Soluções:**\n• Aguarde 1 hora\n• Use outro e-mail\n• Clique em 'Modo demonstração' para testar o app")
         
         st.markdown("---")
         if st.button("🧪 Modo demonstração (Adriano)", use_container_width=True):
@@ -329,7 +347,9 @@ def pagina_demo():
     
     if not df_pesos.empty:
         df_pesos["registered_at"] = pd.to_datetime(df_pesos["registered_at"])
-        fig = px.line(df_pesos, x="registered_at", y="peso_kg", title="Evolução do Peso")
+        fig = px.line(df_pesos, x="registered_at", y="peso_kg", 
+                      title="Evolução do Peso",
+                      labels={"registered_at": "Data", "peso_kg": "Peso (kg)"})
         fig.update_layout(height=350, margin=dict(l=0, r=0, t=40, b=0))
         st.plotly_chart(fig, use_container_width=True)
     
@@ -401,7 +421,9 @@ def pagina_dashboard():
     
     if not df_pesos.empty:
         df_pesos["registered_at"] = pd.to_datetime(df_pesos["registered_at"])
-        fig = px.line(df_pesos, x="registered_at", y="peso_kg", title="Evolução do Peso")
+        fig = px.line(df_pesos, x="registered_at", y="peso_kg",
+                      title="Evolução do Peso",
+                      labels={"registered_at": "Data", "peso_kg": "Peso (kg)"})
         fig.update_layout(height=350, margin=dict(l=0, r=0, t=40, b=0))
         st.plotly_chart(fig, use_container_width=True)
     
