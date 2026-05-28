@@ -1,4 +1,4 @@
-# app.py - EmagreSim v22.0 (Com Login Google)
+# app.py - EmagreSim v22.0 (Com Login Google - CORRIGIDO)
 # Funcionalidades: Login Google, Login Email, Cadastro, Modo Demo
 # Database: Supabase (Auth + Storage + Tables)
 # Deploy: Streamlit Cloud
@@ -159,7 +159,6 @@ def pagina_login():
             with col_g2:
                 if st.button("🔴 Entrar com Google", use_container_width=True):
                     try:
-                        # Redirect para OAuth do Supabase
                         redirect_url = f"{supabase_url}/auth/v1/authorize?provider=google&redirect_to={st.secrets.get('REDIRECT_URL', 'https://emagresim.streamlit.app')}"
                         st.markdown(f'<meta http-equiv="refresh" content="0; url={redirect_url}">', unsafe_allow_html=True)
                     except Exception as e:
@@ -256,7 +255,7 @@ def pagina_login():
                                     time.sleep(1)
                                     st.rerun()
                             except Exception as e:
-                                st.error(traduzir_erro(str(e))))
+                                st.error(traduzir_erro(str(e)))
         
         st.markdown("---")
         if st.button("🧪 Modo demonstração (Adriano)", use_container_width=True):
