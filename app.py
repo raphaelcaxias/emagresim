@@ -3,229 +3,366 @@ import streamlit as st
 import pandas as pd
 import plotly.express as px
 from datetime import datetime, date, timedelta
-import locale
+import random
 
-# Tentar configurar locale para português
-try:
-    locale.setlocale(locale.LC_TIME, 'pt_BR.UTF-8')
-except:
-    try:
-        locale.setlocale(locale.LC_TIME, 'portuguese')
-    except:
-        pass  # mantém padrão
-
+# =============================================================================
+# CONFIGURAÇÃO DA PÁGINA & ESTILIZAÇÃO CUSTOMIZADA (CSS CORAL & TEAL)
+# =============================================================================
 st.set_page_config(
     page_title="EmagreSim | Transformação",
     page_icon="🌱",
     layout="wide",
-    initial_sidebar_state="auto",
+    initial_sidebar_state="collapsed",
 )
 
-# =============================================================================
-# FUNÇÕES AUXILIARES
-# =============================================================================
-def calcular_imc(peso, altura):
-    if altura <= 0:
-        return 0
-    return peso / (altura ** 2)
-
-def mensagem_bom_dia():
-    hora = datetime.now().hour
-    if hora < 12:
-        return "🌅 Bom dia! Hoje é um novo começo."
-    elif hora < 18:
-        return "🌤️ Boa tarde! Continue firme."
-    return "🌙 Boa noite! Amanhã é outro dia."
-
-def get_avatar(percentual):
-    if percentual >= 100:
-        return "🏆", "Conquista! Você atingiu sua meta mensal!"
-    elif percentual >= 75:
-        return "⚡", "Quase lá! Continue firme."
-    elif percentual >= 50:
-        return "🌱", "Metade do caminho. Você está evoluindo."
-    elif percentual >= 25:
-        return "🔥", "Primeiros resultados! Continue assim."
-    else:
-        return "🌅", "Todo recomeço é uma semente. Confie no processo."
-
-def formatar_data_brasil(data):
-    return data.strftime("%d/%m/%Y")
-
-# =============================================================================
-# REGISTRO DE REFEIÇÕES
-# =============================================================================
-def registrar_refeicao():
-    """Interface para registrar refeição com foto"""
-    with st.expander("🍽️ Registrar refeição", expanded=False):
-        col1, col2 = st.columns([2, 1])
-        
-        with col1:
-            tipo = st.selectbox("Tipo de refeição", [
-                "Café da manhã", "Almoço", "Jantar", "Lanche", "Pré-treino", "Pós-treino"
-            ])
-            descricao = st.text_area("O que você comeu?", placeholder="Ex: Arroz, feijão, frango grelhado, salada")
-            calorias = st.number_input("Calorias (kcal)", min_value=0, max_value=2000, value=400, step=50)
-            
-            if st.button("✅ Salvar refeição", use_container_width=True):
-                if descricao:
-                    st.success(f"🍽️ {tipo} registrado! +{calorias} kcal")
-                    st.balloons()
-                else:
-                    st.warning("Digite uma descrição da refeição.")
-        
-        with col2:
-            st.markdown("### 📸 Tire uma foto")
-            st.caption("Fotografar o prato ajuda na consciência alimentar.")
-            foto = st.camera_input("Tirar foto do prato")
-            if foto:
-                st.image(foto, width=150, caption="Sua refeição")
-
-# =============================================================================
-# PÁGINA PRINCIPAL (MODO DEMONSTRAÇÃO)
-# =============================================================================
-def pagina_demo():
-    st.markdown("<h1 style='text-align:center;'>🌱 EmagreSim</h1>", unsafe_allow_html=True)
-    st.markdown("<p style='text-align:center;'>Para quem já tentou de tudo. Dessa vez, sem julgamento.</p>", unsafe_allow_html=True)
+# Injeção de CSS para layout moderno, tipografia limpa e paleta Coral/Teal
+st.markdown("""
+<style>
+    /* Importação de Fonte Google */
+    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
     
-    # Dados do Adriano (exemplo)
-    usuario = {
-        "nome": "Adriano",
-        "idade": 39,
-        "altura": 1.75,
-        "current_weight": 108.0,
-        "meta_mensal_kg": 2.0,
-        "peso_inicio_mes": 108.0
+    html, body, [data-testid="stAppViewContainer"] {
+        font-family: 'Inter', sans-serif;
+        background-color: #FAFAFA;
+        color: #2D3748;
     }
     
-    # Simular histórico de peso (30 dias)
-    datas = [date.today() - timedelta(days=i) for i in range(30, -1, -1)]
-    pesos_simulados = [108.0 - i * 0.1 for i in range(31)]
+    /* Topbar Customizada */
+    .topbar {
+        background: linear-gradient(135deg, #008080 0%, #005A5A 100%);
+        padding: 15px 30px;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        border-radius: 0 0 16px 16px;
+        margin-bottom: 25px;
+        box-shadow: 0 4px 12px rgba(0, 128, 128, 0.15);
+    }
+    .topbar-logo {
+        color: #FFFFFF;
+        font-size: 1.6rem;
+        font-weight: 700;
+        letter-spacing: -0.5px;
+        display: flex;
+        align-items: center;
+        gap: 8px;
+    }
+    .topbar-logo span {
+        color: #FF6F61;
+    }
+    .topbar-user {
+        color: #E2E8F0;
+        font-size: 0.9rem;
+        font-weight: 500;
+    }
+
+    /* Hero Card com Anel de Avatar */
+    .hero-card {
+        background: white;
+        border-radius: 16px;
+        padding: 24px;
+        box-shadow: 0 4px 20px rgba(0,0,0,0.04);
+        display: flex;
+        align-items: center;
+        gap: 24px;
+        margin-bottom: 25px;
+        border-left: 6px solid #FF6F61;
+    }
+    .avatar-container {
+        position: relative;
+        width: 80px;
+        height: 80px;
+        border-radius: 50%;
+        background: white;
+        padding: 4px;
+        border: 4px solid #008080; /* Anel Teal */
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        font-size: 2.2rem;
+        box-shadow: 0 4px 10px rgba(0, 128, 128, 0.2);
+    }
+    .hero-text h2 {
+        margin: 0;
+        color: #1A202C;
+        font-size: 1.8rem;
+        font-weight: 700;
+    }
+    .hero-text p {
+        margin: 4px 0 0 0;
+        color: #718096;
+        font-size: 1rem;
+    }
+
+    /* Customização de Cards de Métricas e Bordas Coloridas */
+    div[data-testid="stMetric"] {
+        background-color: white !important;
+        border-radius: 12px !important;
+        padding: 16px !important;
+        box-shadow: 0 4px 12px rgba(0,0,0,0.03) !important;
+    }
+    /* Cores de Destaque nas Métricas via seletores de coluna */
+    .metric-coral div[data-testid="stMetric"] { border-top: 4px solid #FF6F61; }
+    .metric-teal div[data-testid="stMetric"] { border-top: 4px solid #008080; }
+    .metric-blue div[data-testid="stMetric"] { border-top: 4px solid #3182CE; }
+    .metric-orange div[data-testid="stMetric"] { border-top: 4px solid #DD6B20; }
+
+    /* Cards de Seção */
+    .section-card {
+        background: white;
+        border-radius: 16px;
+        padding: 20px;
+        box-shadow: 0 4px 12px rgba(0,0,0,0.02);
+        margin-bottom: 20px;
+    }
+    .section-title {
+        font-size: 1.1rem;
+        font-weight: 600;
+        color: #2D3748;
+        margin-bottom: 15px;
+        display: flex;
+        align-items: center;
+        gap: 8px;
+    }
+
+    /* Bloco de Apoio Emocional Side-by-Side */
+    .apoio-card {
+        background: #FFF5F5;
+        border: 1px solid #FED7D7;
+        border-radius: 12px;
+        padding: 16px;
+        height: 100%;
+    }
+    .dica-card {
+        background: #EBF8FA;
+        border: 1px solid #E2F8FA;
+        border-radius: 12px;
+        padding: 16px;
+        height: 100%;
+    }
+</style>
+""", unsafe_allow_html=True)
+
+# =============================================================================
+# ESTADO DA SESSÃO (INTERATIVIDADE EM TEMPO REAL)
+# =============================================================================
+if "peso_atual" not in st.session_state:
+    st.session_state.peso_atual = 105.8
+if "habitos" not in st.session_state:
+    st.session_state.habitos = {
+        "💧 Água (2L+)": True,
+        "🥗 Salada no Almoço": False,
+        "🚶 8k Passos": True,
+        "😴 7h+ Sono": False
+    }
+if "refeicoes" not in st.session_state:
+    st.session_state.refeicoes = [
+        {"hora": "08:00", "tipo": "Café da manhã", "desc": "Ovos mexidos, café sem açúcar e mamão", "cal": 320},
+        {"hora": "12:30", "tipo": "Almoço", "desc": "Arroz integral, feijão, patinho grelhado e salada verde", "cal": 580},
+        {"hora": "16:00", "tipo": "Lanche", "desc": "Iogurte natural desnatado com whey e aveia", "cal": 240}
+    ]
+
+# =============================================================================
+# FUNÇÕES AUXILIARES LÓGICAS
+# =============================================================================
+def calcular_imc(peso, altura):
+    return peso / (altura ** 2) if altura > 0 else 0
+
+def get_avatar_info(percentual):
+    if percentual >= 100: return "🏆", "Meta batida! Você é gigante!"
+    if percentual >= 75:  return "⚡", "Reta final! Ritmo acelerado."
+    if percentual >= 50:  return "🌱", "Metade do caminho concluída. Siga firme!"
+    if percentual >= 25:  return "🔥", "Evolução visível! Não para agora."
+    return "🌅", "Foco no processo. Cada escolha conta!"
+
+# =============================================================================
+# 1. TOPBAR COM LOGO PRÓPRIA
+# =============================================================================
+st.markdown(f"""
+<div class="topbar">
+    <div class="topbar-logo">🌱 Emagre<span>Sim</span></div>
+    <div class="topbar-user">👤 Modo Demonstração &nbsp;|&nbsp; <b>Adriano</b> (39 anos)</div>
+</div>
+""", unsafe_allow_html=True)
+
+# Dados Base Fixos
+ALTURA = 1.75
+PESO_INICIAL_MES = 108.0
+META_MENSAL_KG = 3.0
+
+# Cálculos reativos baseados no Session State
+delta_mensal = PESO_INICIAL_MES - st.session_state.peso_atual
+percentual_meta = min(100.0, max(0.0, (delta_mensal / META_MENSAL_KG) * 100))
+avatar_emoji, avatar_msg = get_avatar_info(percentual_meta)
+imc_atual = calcular_imc(st.session_state.peso_atual, ALTURA)
+
+# =============================================================================
+# 2. HERO CARD COM ANEL DE AVATAR
+# =============================================================================
+st.markdown(f"""
+<div class="hero-card">
+    <div class="avatar-container">{avatar_emoji}</div>
+    <div class="hero-text">
+        <h2>Bem-vindo de volta, Adriano!</h2>
+        <p>🎯 {avatar_msg}</p>
+    </div>
+</div>
+""", unsafe_allow_html=True)
+
+# =============================================================================
+# 3. METRICAS EM GRID DE 4 CARDS (COM ACENTOS COLORIDOS VIA CSS)
+# =============================================================================
+k1, k2, k3, k4 = st.columns(4)
+with k1:
+    st.markdown('<div class="metric-coral">', unsafe_allow_html=True)
+    st.metric("⚖️ Peso Atual", f"{st.session_state.peso_atual:.1f} kg", f"-{delta_mensal:.1f} kg no mês")
+    st.markdown('</div>', unsafe_allow_html=True)
+with k2:
+    st.markdown('<div class="metric-teal">', unsafe_allow_html=True)
+    st.metric("📊 IMC Reativo", f"{imc_atual:.1f}", "Faixa ideal: 18.5 - 24.9")
+    st.markdown('</div>', unsafe_allow_html=True)
+with k3:
+    st.markdown('<div class="metric-blue">', unsafe_allow_html=True)
+    st.metric("🎯 Meta do Mês", f"{META_MENSAL_KG:.1f} kg", f"{percentual_meta:.1f}% concluído")
+    st.markdown('</div>', unsafe_allow_html=True)
+with k4:
+    st.markdown('<div class="metric-orange">', unsafe_allow_html=True)
+    st.metric("🔥 Consistência", "14 Dias", "Sequência ativa!")
+    st.markdown('</div>', unsafe_allow_html=True)
+
+st.markdown("<br>", unsafe_allow_html=True)
+
+# Layout Principal splitado em 2 Colunas (Dashboard Esquerda / Entradas Direita)
+col_esq, col_dir = st.columns([2, 1], gap="large")
+
+with col_esq:
+    # =============================================================================
+    # 4. GRÁFICO DE LINHA ESTILIZADO (PALETA TEAL/CORAL)
+    # =============================================================================
+    st.markdown('<div class="section-card"><div class="section-title">📈 Curva de Evolução do Peso</div>', unsafe_allow_html=True)
+    datas = [date.today() - timedelta(days=i) for i in range(15, -1, -1)]
+    pesos_historico = [108.0 - (i * 0.15) + random.uniform(-0.1, 0.1) for i in range(15)] + [st.session_state.peso_atual]
+    df_pesos = pd.DataFrame({"Data": datas, "Peso (kg)": pesos_historico})
     
-    df_pesos = pd.DataFrame({
-        "data": datas,
-        "peso": pesos_simulados
-    })
-    
-    peso_atual = usuario["current_weight"]
-    meta_kg = usuario["meta_mensal_kg"]
-    progresso = usuario["peso_inicio_mes"] - peso_atual
-    percentual = min(100, max(0, (progresso / meta_kg) * 100)) if meta_kg > 0 else 0
-    
-    avatar, msg = get_avatar(percentual)
-    
-    # Avatar e saudação
-    col1, col2 = st.columns([1, 4])
-    with col1:
-        st.markdown(f"<div style='font-size: 4rem; text-align: center;'>{avatar}</div>", unsafe_allow_html=True)
-    with col2:
-        st.markdown(f"<h1>Olá, {usuario['nome']}!</h1>", unsafe_allow_html=True)
-        st.markdown(f"<p>{mensagem_bom_dia()}</p>", unsafe_allow_html=True)
-    
-    # KPIs
-    k1, k2, k3, k4 = st.columns(4)
-    with k1:
-        st.metric("⚖️ Peso Atual", f"{peso_atual:.1f} kg", f"{progresso:+.1f} kg este mês")
-    with k2:
-        imc = calcular_imc(peso_atual, usuario["altura"])
-        st.metric("📊 IMC", f"{imc:.1f}", "referência (18.5-25 é saudável)")
-    with k3:
-        st.metric("🎯 Meta mensal", f"{meta_kg:.1f} kg", f"{progresso:.1f} kg conquistados")
-    with k4:
-        st.metric("📅 Sequência", "30 dias", "🔥 consistência")
-    
-    # Barra de progresso
-    st.markdown(f"**📅 Progresso da meta mensal**")
-    st.progress(percentual / 100, text=f"{progresso:.1f} kg / {meta_kg:.1f} kg")
-    st.caption(msg)
-    
-    # Gráfico de evolução (em português)
-    st.markdown("### 📈 Evolução do Peso")
-    
-    fig = px.line(
-        df_pesos, 
-        x="data", 
-        y="peso",
-        title="",
-        labels={"data": "Data", "peso": "Peso (kg)"}
-    )
-    fig.update_traces(line=dict(color="#FF4D00", width=3), marker=dict(size=4))
+    fig = px.line(df_pesos, x="Data", y="Peso (kg)", markers=True)
+    fig.update_traces(line=dict(color="#008080", width=3), marker=dict(size=8, color="#FF6F61"))
     fig.update_layout(
-        height=400,
-        xaxis_title="Data",
-        yaxis_title="Peso (kg)",
-        xaxis=dict(
-            tickformat="%d/%m",
-            gridcolor='lightgray'
-        ),
-        yaxis=dict(
-            gridcolor='lightgray'
-        ),
-        plot_bgcolor='rgba(0,0,0,0)',
-        paper_bgcolor='rgba(0,0,0,0)'
+        margin=dict(l=20, r=20, t=10, b=10),
+        height=260,
+        plot_bgcolor='white',
+        paper_bgcolor='rgba(0,0,0,0)',
+        xaxis=dict(showgrid=True, gridcolor='#F0F0F0', tickformat="%d/%m"),
+        yaxis=dict(showgrid=True, gridcolor='#F0F0F0')
     )
-    st.plotly_chart(fig, use_container_width=True)
+    st.plotly_chart(fig, use_container_width=True, config={'displayModeBar': False})
+    st.markdown('</div>', unsafe_allow_html=True)
+
+    # =============================================================================
+    # 5. GRID DE REFEIÇÕES DO DIA
+    # =============================================================================
+    st.markdown('<div class="section-card"><div class="section-title">🍽️ Linha do Tempo Alimentar</div>', unsafe_allow_html=True)
     
-    # Registrar peso
-    with st.expander("⚖️ Registrar peso hoje", expanded=False):
-        col_p1, col_p2 = st.columns([3, 1])
-        with col_p1:
-            novo_peso = st.number_input("Peso (kg)", min_value=30.0, max_value=300.0, value=peso_atual, step=0.1)
-        with col_p2:
-            st.markdown(" ")
-            if st.button("✅ Salvar", use_container_width=True):
-                st.success(f"✅ Peso registrado: {novo_peso:.1f} kg")
-                if novo_peso <= usuario["meta_mensal_kg"]:
-                    st.balloons()
+    ref_cols = st.columns(3)
+    for idx, ref in enumerate(st.session_state.refeicoes):
+        with ref_cols[idx % 3]:
+            st.markdown(f"""
+            <div style="background: #F7FAFC; border-left: 3px solid #008080; padding: 12px; border-radius: 8px; height: 100%;">
+                <span style="font-size: 0.8rem; color: #718096; font-weight: 600;">{ref['hora']} - {ref['tipo']}</span>
+                <p style="margin: 4px 0; font-size: 0.9rem; font-weight: 500;">{ref['desc']}</p>
+                <span style="font-size: 0.85rem; color: #FF6F61; font-weight: 600;">🔥 {ref['cal']} kcal</span>
+            </div>
+            """, unsafe_allow_html=True)
+            
+    st.markdown('</div>', unsafe_allow_html=True)
+
+with col_dir:
+    # =============================================================================
+    # 6. FORMULÁRIO DINÂMICO DE PESO REATIVO
+    # =============================================================================
+    st.markdown('<div class="section-card"><div class="section-title">⚖️ Atualizar Peso Atual</div>', unsafe_allow_html=True)
     
-    # Registrar refeição
-    registrar_refeicao()
+    novo_peso = st.number_input(
+        "Registre sua pesagem de hoje (kg):", 
+        min_value=40.0, max_value=200.0, 
+        value=st.session_state.peso_atual, 
+        step=0.1
+    )
     
-    # Apoio emocional
-    with st.expander("🫂 Preciso de apoio", expanded=False):
-        st.markdown("""
-        <div style="background: rgba(255,77,0,0.1); border-radius: 20px; padding: 20px; text-align: center;">
-            <span style="font-size: 2rem;">💙</span>
-            <p style="font-size: 1rem; margin-top: 10px;">Dias difíceis acontecem. Você não está sozinho.</p>
-            <p style="font-size: 0.85rem;">Um dia de cada vez. Recomeçar também é progresso.</p>
-        </div>
-        """, unsafe_allow_html=True)
+    if novo_peso != st.session_state.peso_atual:
+        st.session_state.peso_atual = novo_peso
+        st.toast(f"Peso atualizado para {novo_peso}kg! Calculando novas métricas...", icon="⚖️")
+        st.rerun()
+        
+    st.markdown('</div>', unsafe_allow_html=True)
+
+    # =============================================================================
+    # 7. HÁBITOS CLICÁVEIS COM FEEDBACK EM TEMPO REAL (CHECKBOXES ESTILIZADAS)
+    # =============================================================================
+    st.markdown('<div class="section-card"><div class="section-title">🎯 Metas Diárias (Clique para mudar)</div>', unsafe_allow_html=True)
     
-    # Desafio da semana
-    with st.expander("🏆 Desafio da Semana", expanded=False):
-        desafios = [
-            "💧 Beba 2L de água por 5 dias",
-            "🥚 Registre proteína em todas as refeições",
-            "🚶 Caminhe 30min por dia durante 4 dias",
-            "😴 Durma 7h+ por 5 dias",
-            "🍎 Coma uma fruta em todas as refeições"
-        ]
-        import random
-        desafio = random.choice(desafios)
-        st.markdown(f"**{desafio}** ⚡ +100 XP")
-        st.progress(0.3, text="Progresso: 2/5 dias")
-    
-    # Dica do dia
-    with st.expander("💡 Dica do dia", expanded=False):
-        dicas = [
-            "Beba um copo de água antes de cada refeição.",
-            "Durma 7-8h por noite para regular os hormônios.",
-            "Inclua proteína em todas as refeições para mais saciedade.",
-            "Não pule o café da manhã – ele ativa seu metabolismo.",
-            "Faça pequenas caminhadas após as refeições.",
-            "Mastigue devagar – seu cérebro leva 20min para perceber saciedade."
-        ]
-        st.info(random.choice(dicas))
-    
-    # Rodapé informativo
-    st.markdown("---")
-    st.caption("📌 Modo demonstração com dados do Adriano. Para criar sua conta, entre em contato com o administrador.")
+    habitos_concluidos = 0
+    for habito, status in st.session_state.habitos.items():
+        # Checkbox nativo que atua diretamente modificando o dicionário de estados
+        novo_status = st.checkbox(habito, value=status, key=f"hab_{habito}")
+        if novo_status != status:
+            st.session_state.habitos[habito] = novo_status
+            if novo_status:
+                st.toast(f"Parabéns! Você concluiu: {habito}", icon="✅")
+            st.rerun()
+        if novo_status:
+            habitos_concluidos += 1
+            
+    # Barra de Progresso de Hábitos Integrada
+    pct_habitos = habitos_concluidos / len(st.session_state.habitos)
+    st.markdown("<div style='margin-top: 15px;'></div>", unsafe_allow_html=True)
+    st.progress(pct_habitos, text=f"Hábitos do dia: {habitos_concluidos}/{len(st.session_state.habitos)}")
+    st.markdown('</div>', unsafe_allow_html=True)
 
 # =============================================================================
-# MAIN
+# 8. BARRAS DE PROGRESSO SEPARADAS POR CATEGORIA
 # =============================================================================
-def main():
-    pagina_demo()
+st.markdown('<div class="section-card"><div class="section-title">📊 Visão Geral de Metas</div>', unsafe_allow_html=True)
+c_prog1, c_prog2, c_prog3 = st.columns(3)
+with c_prog1:
+    st.progress(percentual_meta / 100, text=f"Metas de Peso Mensal: {percentual_meta:.1f}%")
+with c_prog2:
+    st.progress(pct_habitos, text=f"Consistência Rotineira Diária: {pct_habitos*100:.0f}%")
+with c_prog3:
+    # Simulação calórica diária baseado no log alimentício
+    total_cal = sum(r['cal'] for r in st.session_state.refeicoes)
+    meta_cal = 2000
+    st.progress(min(1.0, total_cal/meta_cal), text=f"Orçamento Calórico Consumido: {total_cal}/{meta_cal} kcal")
+st.markdown('</div>', unsafe_allow_html=True)
 
-if __name__ == "__main__":
-    main()
+# =============================================================================
+# 9. LADO A LADO: DICA DO DIA & APOIO EMOCIONAL
+# =============================================================================
+col_dica, col_apoio = st.columns(2)
+
+with col_dica:
+    st.markdown("""
+    <div class="dica-card">
+        <h4 style="margin: 0 0 8px 0; color: #008080;">💡 Dica Saudável do Dia</h4>
+        <p style="margin: 0; font-size: 0.95rem; color: #2D3748; line-height: 1.5;">
+            "Mastigue devagar: o sistema digestivo demora cerca de 20 minutos para enviar os sinais de saciedade total ao cérebro. Aproveite a refeição!"
+        </p>
+    </div>
+    """, unsafe_allow_html=True)
+
+with col_apoio:
+    st.markdown("""
+    <div class="apoio-card">
+        <h4 style="margin: 0 0 8px 0; color: #E53E3E;">🫂 Suporte & Acolhimento</h4>
+        <p style="margin: 0; font-size: 0.95rem; color: #2D3748; line-height: 1.5;">
+            "Dias difíceis e oscilações no peso fazem parte de jornadas reais. Não se julgue por ontem, foque no próximo pequeno passo certo que você pode dar agora."
+        </p>
+    </div>
+    """, unsafe_allow_html=True)
+
+# Rodapé informativo fixado de forma limpa
+st.markdown("""
+<br><hr style="border: 0; border-top: 1px solid #E2E8F0; margin: 20px 0;">
+<div style="text-align: center; color: #A0AEC0; font-size: 0.85rem;">
+    📌 EmagreSim v25.0 • Desenvolvido com foco em psicologia comportamental e usabilidade transparente.
+</div>
+""", unsafe_allow_html=True)
