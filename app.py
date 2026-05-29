@@ -1,849 +1,1022 @@
-# app.py — EmagreSim v34.0 "Complete Core"
-# Funcionalidades: Calculadora calórica dinâmica, sistema de pontos, análise de dados, monetização
-# Foco: Emagrecimento/Ganho de Massa + Consciência Alimentar + Foto do Prato + Gamificação Real
+# nutriflow_app.py — NutriFlow v1.0
+# Design: Premium SaaS · Dark luxury · Identidade verde esmeralda
+# Stack: Streamlit + Plotly + Supabase (opcional)
 
 import streamlit as st
 import pandas as pd
 import plotly.graph_objects as go
 import plotly.express as px
 from datetime import datetime, date, timedelta
-import random
 import json
-import hashlib
 from typing import Optional, Dict, List, Tuple
 from dataclasses import dataclass, field
-from enum import Enum
-from supabase import create_client, Client
 
 # ============================================================================
-# CONFIGURAÇÃO GLOBAL
+# PAGE CONFIG
 # ============================================================================
-DEFAULT_TZ = datetime.now().astimezone().tzinfo
-
 st.set_page_config(
-    page_title="EmagreSim • Transformação",
-    page_icon="🌱",
+    page_title="NutriFlow • Transformação Inteligente",
+    page_icon="🌿",
     layout="centered",
     initial_sidebar_state="collapsed",
 )
 
-# CSS Moderno
+# ============================================================================
+# DESIGN SYSTEM — Dark Luxury + Verde Esmeralda
+# ============================================================================
 CSS = """
 <style>
-    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
-    
-    html, body, [data-testid="stAppViewContainer"] {
-        font-family: 'Inter', sans-serif;
-        background-color: #f8fafc;
-        color: #1e293b;
-    }
-    
-    .block-container {
-        padding-top: 2rem !important;
-        padding-bottom: 2rem !important;
-        max-width: 680px !important;
-    }
-    
-    .card {
-        background: white;
-        border-radius: 20px;
-        padding: 20px;
-        margin-bottom: 16px;
-        box-shadow: 0 1px 3px rgba(0,0,0,0.05);
-        border: 1px solid #e2e8f0;
-    }
-    
-    .level-badge {
-        background: linear-gradient(135deg, #f59e0b, #ea580c);
-        color: white;
-        padding: 4px 12px;
-        border-radius: 20px;
-        font-size: 0.75rem;
-        font-weight: 600;
-        display: inline-block;
-    }
-    
-    .meal-card {
-        background: white;
-        border: 1px solid #e2e8f0;
-        border-radius: 16px;
-        padding: 16px;
-        margin-bottom: 12px;
-        transition: all 0.2s;
-    }
-    .meal-card:hover {
-        border-color: #f59e0b;
-        box-shadow: 0 4px 12px rgba(0,0,0,0.05);
-    }
-    .meal-header {
-        display: flex;
-        justify-content: space-between;
-        align-items: center;
-        margin-bottom: 8px;
-    }
-    .meal-type {
-        font-weight: 600;
-        color: #f59e0b;
-        font-size: 0.8rem;
-        text-transform: uppercase;
-    }
-    .meal-time {
-        font-size: 0.7rem;
-        color: #94a3b8;
-    }
-    .meal-desc {
-        font-size: 0.85rem;
-        color: #334155;
-        margin: 8px 0;
-    }
-    .meal-cal {
-        font-weight: 600;
-        color: #10b981;
-        font-size: 0.8rem;
-    }
-    .meal-photo {
-        margin-top: 8px;
-        border-radius: 12px;
-        overflow: hidden;
-    }
-    
-    .metric-grid {
-        display: grid;
-        grid-template-columns: repeat(3, 1fr);
-        gap: 12px;
-        margin-bottom: 20px;
-    }
-    .metric-card {
-        background: white;
-        border: 1px solid #e2e8f0;
-        border-radius: 16px;
-        padding: 16px;
-        text-align: center;
-    }
-    .metric-value {
-        font-size: 1.8rem;
-        font-weight: 700;
-        color: #0f172a;
-    }
-    .metric-label {
-        font-size: 0.7rem;
-        color: #64748b;
-        text-transform: uppercase;
-        letter-spacing: 0.05em;
-    }
-    
-    .narrative-box {
-        background: linear-gradient(135deg, #fef3c7, #fde68a);
-        border-radius: 20px;
-        padding: 20px;
-        margin-bottom: 20px;
-        border: 1px solid #fcd34d;
-    }
-    
-    .progress-bar {
-        background: #e2e8f0;
-        border-radius: 10px;
-        height: 8px;
-        overflow: hidden;
-        margin: 10px 0;
-    }
-    .progress-fill {
-        background: linear-gradient(90deg, #f59e0b, #ea580c);
-        height: 100%;
-        border-radius: 10px;
-        transition: width 0.5s;
-    }
-    
-    .points-badge {
-        background: #fef3c7;
-        border-radius: 20px;
-        padding: 4px 12px;
-        font-size: 0.8rem;
-        font-weight: 600;
-        color: #92400e;
-        display: inline-flex;
-        align-items: center;
-        gap: 6px;
-    }
-    
-    #MainMenu, header, footer {display: none;}
+@import url('https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,300;0,9..144,600;0,9..144,700;1,9..144,300&family=DM+Sans:wght@300;400;500;600&display=swap');
+
+:root {
+  --bg:          #0d1117;
+  --bg2:         #161b22;
+  --bg3:         #1c2330;
+  --surface:     #21262d;
+  --border:      #30363d;
+  --border-soft: #21262d;
+  --emerald:     #2dce89;
+  --emerald-dim: #1a7d52;
+  --emerald-glow:rgba(45,206,137,0.12);
+  --gold:        #f0b429;
+  --gold-dim:    rgba(240,180,41,0.15);
+  --text:        #e6edf3;
+  --text-muted:  #7d8590;
+  --text-dim:    #484f58;
+  --danger:      #f85149;
+  --info:        #58a6ff;
+  --radius:      16px;
+  --radius-sm:   10px;
+}
+
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+html, body,
+[data-testid="stAppViewContainer"],
+[data-testid="stMain"],
+.main { 
+  background-color: var(--bg) !important;
+  color: var(--text) !important;
+  font-family: 'DM Sans', sans-serif !important;
+}
+
+[data-testid="stAppViewContainer"] { min-height: 100vh; }
+
+.block-container {
+  padding: 2rem 1rem 4rem !important;
+  max-width: 700px !important;
+}
+
+/* ── Tipografia ── */
+h1,h2,h3 { font-family: 'Fraunces', Georgia, serif; }
+
+/* ── Scrollbar ── */
+::-webkit-scrollbar { width: 4px; }
+::-webkit-scrollbar-track { background: var(--bg); }
+::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
+
+/* ── HERO HEADER ── */
+.hero {
+  position: relative;
+  padding: 36px 28px 28px;
+  background: var(--bg2);
+  border: 1px solid var(--border);
+  border-radius: 24px;
+  margin-bottom: 20px;
+  overflow: hidden;
+}
+.hero::before {
+  content: '';
+  position: absolute; inset: 0;
+  background: radial-gradient(ellipse 60% 60% at 85% 20%, rgba(45,206,137,0.08) 0%, transparent 70%);
+  pointer-events: none;
+}
+.hero-eyebrow {
+  font-size: 0.68rem;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--emerald);
+  font-weight: 600;
+  margin-bottom: 8px;
+}
+.hero-name {
+  font-family: 'Fraunces', serif;
+  font-size: 2rem;
+  font-weight: 700;
+  color: var(--text);
+  line-height: 1.2;
+  margin-bottom: 6px;
+}
+.hero-sub {
+  font-size: 0.82rem;
+  color: var(--text-muted);
+  font-weight: 300;
+}
+.hero-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background: var(--emerald-glow);
+  border: 1px solid var(--emerald-dim);
+  color: var(--emerald);
+  font-size: 0.7rem;
+  font-weight: 600;
+  padding: 4px 12px;
+  border-radius: 20px;
+  margin-top: 14px;
+  letter-spacing: 0.04em;
+}
+.hero-streak {
+  position: absolute;
+  top: 28px; right: 28px;
+  text-align: center;
+}
+.hero-streak-num {
+  font-family: 'Fraunces', serif;
+  font-size: 2.4rem;
+  font-weight: 700;
+  color: var(--gold);
+  line-height: 1;
+}
+.hero-streak-label {
+  font-size: 0.62rem;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+}
+
+/* ── STAT CARDS ── */
+.stats-row {
+  display: grid;
+  grid-template-columns: repeat(3,1fr);
+  gap: 12px;
+  margin-bottom: 20px;
+}
+.stat-card {
+  background: var(--bg2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 18px 14px;
+  text-align: center;
+  transition: border-color .2s;
+}
+.stat-card:hover { border-color: var(--emerald-dim); }
+.stat-num {
+  font-family: 'Fraunces', serif;
+  font-size: 1.9rem;
+  font-weight: 700;
+  color: var(--text);
+  line-height: 1;
+}
+.stat-num.green { color: var(--emerald); }
+.stat-num.gold  { color: var(--gold); }
+.stat-label {
+  font-size: 0.65rem;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  margin-top: 4px;
+}
+
+/* ── PROGRESS BAR ── */
+.pbar-wrap { margin: 6px 0 2px; }
+.pbar-header { display: flex; justify-content: space-between; font-size: 0.7rem; color: var(--text-muted); margin-bottom: 6px; }
+.pbar-track { background: var(--surface); border-radius: 6px; height: 6px; overflow: hidden; }
+.pbar-fill {
+  height: 100%;
+  border-radius: 6px;
+  transition: width .6s cubic-bezier(.4,0,.2,1);
+}
+.pbar-fill.green { background: linear-gradient(90deg, #2dce89, #20a870); }
+.pbar-fill.gold  { background: linear-gradient(90deg, #f0b429, #e07b00); }
+.pbar-fill.blue  { background: linear-gradient(90deg, #58a6ff, #1f6feb); }
+
+/* ── MEAL CARDS ── */
+.meal-item {
+  background: var(--bg2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 16px 18px;
+  margin-bottom: 10px;
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  transition: border-color .2s, transform .15s;
+}
+.meal-item:hover { border-color: var(--emerald-dim); transform: translateX(2px); }
+.meal-type-tag {
+  font-size: 0.65rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  color: var(--emerald);
+  margin-bottom: 4px;
+}
+.meal-desc { font-size: 0.85rem; color: var(--text); line-height: 1.4; }
+.meal-time { font-size: 0.7rem; color: var(--text-dim); margin-top: 4px; }
+.meal-kcal {
+  font-family: 'Fraunces', serif;
+  font-size: 1.1rem;
+  font-weight: 600;
+  color: var(--emerald);
+  white-space: nowrap;
+  margin-left: 16px;
+}
+.meal-photo-badge {
+  font-size: 0.6rem;
+  background: var(--gold-dim);
+  color: var(--gold);
+  border-radius: 6px;
+  padding: 2px 6px;
+  margin-left: 6px;
+}
+
+/* ── SECTION HEADERS ── */
+.section-title {
+  font-family: 'Fraunces', serif;
+  font-size: 1.1rem;
+  font-weight: 600;
+  color: var(--text);
+  margin: 24px 0 12px;
+}
+.section-title span { color: var(--emerald); }
+
+/* ── EMOTION PILLS ── */
+.emotion-row { display: flex; gap: 8px; flex-wrap: wrap; margin: 12px 0; }
+
+/* ── DIVIDER ── */
+.divider { border: none; border-top: 1px solid var(--border); margin: 24px 0; }
+
+/* ── PREMIUM CARD ── */
+.premium-card {
+  background: linear-gradient(135deg, #1a2a1e, #0d1a12);
+  border: 1px solid var(--emerald-dim);
+  border-radius: 20px;
+  padding: 24px;
+  margin-top: 20px;
+  position: relative;
+  overflow: hidden;
+}
+.premium-card::before {
+  content: '';
+  position: absolute;
+  top: -40px; right: -40px;
+  width: 160px; height: 160px;
+  background: radial-gradient(circle, rgba(45,206,137,0.12) 0%, transparent 70%);
+}
+.premium-title {
+  font-family: 'Fraunces', serif;
+  font-size: 1.2rem;
+  color: var(--emerald);
+  margin-bottom: 8px;
+}
+.premium-feature {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 0.8rem;
+  color: var(--text-muted);
+  margin: 6px 0;
+}
+.premium-feature::before {
+  content: '✓';
+  color: var(--emerald);
+  font-weight: 700;
+  font-size: 0.75rem;
+}
+
+/* ── LEVEL PROGRESS CARD ── */
+.level-card {
+  background: var(--bg2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 18px;
+  margin-bottom: 16px;
+}
+.level-name {
+  font-family: 'Fraunces', serif;
+  font-size: 1rem;
+  color: var(--gold);
+  margin-bottom: 4px;
+}
+.level-desc { font-size: 0.78rem; color: var(--text-muted); margin-bottom: 12px; }
+
+/* ── EMPTY STATE ── */
+.empty-state {
+  text-align: center;
+  padding: 32px 20px;
+  color: var(--text-dim);
+}
+.empty-state .icon { font-size: 2rem; margin-bottom: 8px; }
+.empty-state .msg { font-size: 0.82rem; }
+
+/* ── OVERRIDES Streamlit ── */
+div[data-testid="stTabs"] [role="tablist"] {
+  background: var(--bg2) !important;
+  border-radius: var(--radius-sm) !important;
+  border: 1px solid var(--border) !important;
+  padding: 4px !important;
+  gap: 2px !important;
+}
+div[data-testid="stTabs"] [role="tab"] {
+  background: transparent !important;
+  color: var(--text-muted) !important;
+  border-radius: 8px !important;
+  font-size: 0.78rem !important;
+  font-family: 'DM Sans', sans-serif !important;
+  border: none !important;
+  padding: 6px 12px !important;
+}
+div[data-testid="stTabs"] [aria-selected="true"] {
+  background: var(--surface) !important;
+  color: var(--emerald) !important;
+  font-weight: 600 !important;
+}
+
+[data-testid="stExpander"] {
+  background: var(--bg2) !important;
+  border: 1px solid var(--border) !important;
+  border-radius: var(--radius) !important;
+}
+[data-testid="stExpander"] summary {
+  color: var(--text) !important;
+  font-size: 0.85rem !important;
+}
+
+.stButton > button {
+  background: var(--emerald) !important;
+  color: #0d1117 !important;
+  border: none !important;
+  border-radius: 10px !important;
+  font-family: 'DM Sans', sans-serif !important;
+  font-weight: 600 !important;
+  font-size: 0.82rem !important;
+  padding: 10px 18px !important;
+  transition: opacity .2s, transform .1s !important;
+}
+.stButton > button:hover {
+  opacity: 0.9 !important;
+  transform: translateY(-1px) !important;
+}
+.stButton > button:active { transform: translateY(0) !important; }
+
+/* secondary buttons */
+.stButton.secondary > button,
+button[kind="secondary"] {
+  background: var(--surface) !important;
+  color: var(--text) !important;
+  border: 1px solid var(--border) !important;
+}
+
+div[data-testid="stNumberInput"] > div,
+div[data-testid="stTextInput"] > div,
+div[data-testid="stTextArea"] > div,
+div[data-testid="stSelectbox"] > div {
+  background: var(--surface) !important;
+  border-color: var(--border) !important;
+  border-radius: var(--radius-sm) !important;
+  color: var(--text) !important;
+}
+input, textarea, select {
+  background: var(--surface) !important;
+  color: var(--text) !important;
+}
+
+div[data-testid="stMetric"] {
+  background: var(--bg2) !important;
+  border: 1px solid var(--border) !important;
+  border-radius: var(--radius) !important;
+  padding: 14px !important;
+}
+[data-testid="stMetricValue"] { color: var(--text) !important; font-family: 'Fraunces', serif !important; }
+[data-testid="stMetricLabel"] { color: var(--text-muted) !important; font-size: 0.7rem !important; }
+
+div[data-testid="stAlert"] {
+  background: var(--bg2) !important;
+  border-color: var(--border) !important;
+  color: var(--text-muted) !important;
+  border-radius: var(--radius-sm) !important;
+}
+
+div[data-testid="stForm"] {
+  background: var(--bg2) !important;
+  border: 1px solid var(--border) !important;
+  border-radius: var(--radius) !important;
+  padding: 20px !important;
+}
+
+label { color: var(--text-muted) !important; font-size: 0.78rem !important; }
+
+#MainMenu, header, footer { display: none !important; }
+
+/* ── LOGO / WORDMARK ── */
+.wordmark {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 20px;
+}
+.wordmark-icon {
+  width: 36px; height: 36px;
+  background: var(--emerald);
+  border-radius: 10px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1.1rem;
+}
+.wordmark-text {
+  font-family: 'Fraunces', serif;
+  font-size: 1.3rem;
+  font-weight: 700;
+  color: var(--text);
+  letter-spacing: -0.02em;
+}
+.wordmark-tagline {
+  font-size: 0.62rem;
+  color: var(--text-dim);
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+}
+
+/* ── CALORIE RING ── */
+.calorie-ring-wrap {
+  display: flex;
+  align-items: center;
+  gap: 20px;
+  background: var(--bg2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 18px;
+  margin-bottom: 16px;
+}
+.calorie-info { flex: 1; }
+.calorie-consumed {
+  font-family: 'Fraunces', serif;
+  font-size: 2rem;
+  font-weight: 700;
+  color: var(--emerald);
+  line-height: 1;
+}
+.calorie-target { font-size: 0.75rem; color: var(--text-muted); margin-top: 2px; }
+.calorie-macro-row { display: flex; gap: 14px; margin-top: 12px; }
+.calorie-macro { text-align: center; }
+.calorie-macro-val { font-size: 0.9rem; font-weight: 600; color: var(--text); }
+.calorie-macro-label { font-size: 0.6rem; color: var(--text-dim); text-transform: uppercase; }
+
+/* ── FOOTER ── */
+.app-footer {
+  text-align: center;
+  padding: 24px 0 8px;
+  font-size: 0.65rem;
+  color: var(--text-dim);
+  letter-spacing: 0.06em;
+}
 </style>
 """
 st.markdown(CSS, unsafe_allow_html=True)
 
 # ============================================================================
-# SUPABASE (opcional)
-# ============================================================================
-def get_supabase() -> Optional[Client]:
-    try:
-        url = st.secrets.get("SUPABASE_URL")
-        key = st.secrets.get("CHAVE_SUPABASE")
-        if not url or not key:
-            return None
-        return create_client(url, key)
-    except:
-        return None
-
-supabase = get_supabase()
-
-# ============================================================================
 # CONSTANTES
 # ============================================================================
 EMOTIONS = {
-    "motivado": {"icon": "✨", "label": "Motivado", "color": "#22c55e"},
-    "neutro": {"icon": "😐", "label": "Neutro", "color": "#94a3b8"},
-    "ansioso": {"icon": "😰", "label": "Ansioso", "color": "#f59e0b"},
-    "cansado": {"icon": "😔", "label": "Cansado", "color": "#ef4444"},
-    "confiante": {"icon": "💪", "label": "Confiante", "color": "#0d9488"},
+    "motivado":   {"icon": "✨", "label": "Motivado",  "color": "#2dce89"},
+    "confiante":  {"icon": "💪", "label": "Confiante", "color": "#58a6ff"},
+    "neutro":     {"icon": "😐", "label": "Neutro",    "color": "#7d8590"},
+    "ansioso":    {"icon": "😰", "label": "Ansioso",   "color": "#f0b429"},
+    "cansado":    {"icon": "😔", "label": "Cansado",   "color": "#f85149"},
 }
 
 MEAL_TYPES = {
-    "cafe": {"name": "☀️ Café da manhã", "order": 1, "cal_hint": 350},
-    "almoco": {"name": "🍽️ Almoço", "order": 2, "cal_hint": 600},
-    "lanche": {"name": "🍎 Lanche", "order": 3, "cal_hint": 200},
-    "jantar": {"name": "🌙 Jantar", "order": 4, "cal_hint": 550},
+    "cafe":   {"name": "Café da manhã",  "icon": "☀️", "order": 1, "cal_hint": 350},
+    "almoco": {"name": "Almoço",         "icon": "🥗", "order": 2, "cal_hint": 600},
+    "lanche": {"name": "Lanche",         "icon": "🍎", "order": 3, "cal_hint": 200},
+    "jantar": {"name": "Jantar",         "icon": "🌙", "order": 4, "cal_hint": 500},
 }
 
 LEVELS = [
-    {"name": "🌱 Iniciante", "min_points": 0, "desc": "Todo começo é válido."},
-    {"name": "🔥 Explorador", "min_points": 500, "desc": "Descobrindo seu ritmo."},
-    {"name": "💪 Persistente", "min_points": 1500, "desc": "Construindo presença."},
-    {"name": "🔄 Reconstrutor", "min_points": 3000, "desc": "Recair faz parte. Voltar é força."},
-    {"name": "⚓ Inabalável", "min_points": 6000, "desc": "Sua consistência é sua âncora."},
-    {"name": "🌟 Guia", "min_points": 10000, "desc": "Você inspira pelo exemplo."},
+    {"name": "Iniciante",     "icon": "🌱", "min": 0,     "desc": "Todo começo é válido."},
+    {"name": "Explorador",    "icon": "🔥", "min": 500,   "desc": "Descobrindo seu ritmo."},
+    {"name": "Persistente",   "icon": "💪", "min": 1500,  "desc": "Construindo consistência."},
+    {"name": "Reconstrutor",  "icon": "🔄", "min": 3000,  "desc": "Recair faz parte. Voltar é força."},
+    {"name": "Inabalável",    "icon": "⚓", "min": 6000,  "desc": "Sua consistência é sua âncora."},
+    {"name": "Guia",          "icon": "🌟", "min": 10000, "desc": "Você inspira pelo exemplo."},
 ]
 
 GOAL_TYPES = {
-    "emagrecer": {"label": "🎯 Emagrecer", "activity_level": 1.55},
-    "ganhar_massa": {"label": "💪 Ganhar massa muscular", "activity_level": 1.725},
-    "manter": {"label": "⚖️ Manter o peso", "activity_level": 1.55},
+    "emagrecer":     {"label": "Emagrecer",          "tdee_adj": -500},
+    "ganhar_massa":  {"label": "Ganhar massa",        "tdee_adj": +300},
+    "manter":        {"label": "Manter o peso",       "tdee_adj": 0},
 }
 
 ACTIVITY_LEVELS = {
-    "sedentario": 1.2,
-    "leve": 1.375,
-    "moderado": 1.55,
-    "intenso": 1.725,
-    "extremo": 1.9,
+    "sedentario": {"label": "Sedentário",     "factor": 1.2},
+    "leve":       {"label": "Levemente ativo","factor": 1.375},
+    "moderado":   {"label": "Moderadamente",  "factor": 1.55},
+    "intenso":    {"label": "Muito ativo",    "factor": 1.725},
+    "extremo":    {"label": "Extremamente",   "factor": 1.9},
+}
+
+POINTS = {
+    "checkin":   10, "meal": 15, "meal_photo": 5,
+    "weight":    10, "goal_hit": 30,
+    "streak_7":  100, "streak_30": 500,
 }
 
 # ============================================================================
 # CÁLCULOS
 # ============================================================================
-def calcular_tmb(peso: float, altura: float, idade: int, sexo: str = "M") -> float:
-    altura_cm = altura * 100
-    if sexo == "M":
-        return (10 * peso) + (6.25 * altura_cm) - (5 * idade) + 5
-    else:
-        return (10 * peso) + (6.25 * altura_cm) - (5 * idade) - 161
+def calc_tmb(peso, altura, idade, sexo="M"):
+    h = altura * 100
+    return (10*peso + 6.25*h - 5*idade + 5) if sexo == "M" else (10*peso + 6.25*h - 5*idade - 161)
 
-def calcular_meta_calorica(tmb: float, objetivo: str, nivel_atividade: str = "moderado") -> int:
-    fator_atividade = ACTIVITY_LEVELS.get(nivel_atividade, 1.55)
-    tdee = tmb * fator_atividade
-    
-    if objetivo == "emagrecer":
-        return int(tdee - 500)
-    elif objetivo == "ganhar_massa":
-        return int(tdee + 300)
-    else:
-        return int(tdee)
+def calc_tdee(tmb, nivel):
+    return tmb * ACTIVITY_LEVELS.get(nivel, ACTIVITY_LEVELS["moderado"])["factor"]
 
-def calcular_imc(peso: float, altura: float) -> float:
-    if altura <= 0:
-        return 0
-    return peso / (altura ** 2)
+def calc_meta(tdee, objetivo):
+    return int(tdee + GOAL_TYPES.get(objetivo, GOAL_TYPES["emagrecer"])["tdee_adj"])
 
-def calcular_progresso_peso(peso_atual: float, peso_inicio: float, meta_mensal: float = 2.0) -> Dict:
-    perdido = max(0, peso_inicio - peso_atual)
-    percentual = min(100, (perdido / meta_mensal) * 100) if meta_mensal > 0 else 0
-    return {"perdido": perdido, "percentual": percentual, "restante": max(0, meta_mensal - perdido)}
+def get_level(pts):
+    lvl = LEVELS[0]
+    for l in LEVELS:
+        if pts >= l["min"]:
+            lvl = l
+    return lvl
+
+def get_next_level(pts):
+    for l in LEVELS:
+        if pts < l["min"]:
+            return l
+    return LEVELS[-1]
+
+def level_progress(pts):
+    nl = get_next_level(pts)
+    idx = LEVELS.index(nl)
+    prev_min = LEVELS[idx-1]["min"] if idx > 0 else 0
+    span = nl["min"] - prev_min
+    return min(100, (pts - prev_min) / span * 100) if span > 0 else 0
 
 # ============================================================================
-# DATACLASSES
+# STATE
 # ============================================================================
 @dataclass
-class MealEntry:
-    type: str
-    description: str
-    calories: int
-    photo_url: Optional[str] = None
-    timestamp: str = field(default_factory=lambda: datetime.now().isoformat())
-    
-    def to_dict(self) -> Dict:
-        return {"type": self.type, "description": self.description, "calories": self.calories, 
-                "photo_url": self.photo_url, "timestamp": self.timestamp}
-
-@dataclass
-class WeightEntry:
-    weight: float
-    timestamp: str = field(default_factory=lambda: datetime.now().isoformat())
-
-@dataclass
-class BehavioralState:
-    user_id: str = "demo-user"
-    nome: str = "Usuário"
+class AppState:
+    nome: str = "Atleta"
     sexo: str = "M"
-    idade: int = 30
-    altura: float = 1.70
+    idade: int = 28
+    altura: float = 1.72
     objetivo: str = "emagrecer"
     nivel_atividade: str = "moderado"
-    
-    current_weight: float = 80.0
-    target_weight: float = 70.0
-    peso_inicio_mes: float = 80.0
-    meta_mensal_kg: float = 2.0
-    
-    # Pontuação e níveis
+    peso_atual: float = 82.0
+    peso_meta: float = 72.0
+    peso_inicio: float = 82.0
     total_points: int = 0
-    current_level: int = 0
-    
-    # Consistência
-    current_streak: int = 0
-    longest_streak: int = 0
+    streak: int = 0
+    streak_max: int = 0
     total_checkins: int = 0
     last_checkin: Optional[str] = None
-    
-    # Registros
     meals_today: List[Dict] = field(default_factory=list)
     weight_history: List[Dict] = field(default_factory=list)
     emotion_history: List[Dict] = field(default_factory=list)
-    points_history: List[Dict] = field(default_factory=list)
-    
-    # Para análises
+    points_log: List[Dict] = field(default_factory=list)
     is_premium: bool = False
-    
-    def get_level_info(self) -> Dict:
-        for i, level in enumerate(reversed(LEVELS)):
-            if self.total_points >= level["min_points"]:
-                return level
-        return LEVELS[0]
-    
-    def get_next_level_info(self) -> Dict:
-        for level in LEVELS:
-            if self.total_points < level["min_points"]:
-                return level
-        return LEVELS[-1]
-    
-    def get_progress_to_next_level(self) -> float:
-        current = self.total_points
-        next_level = self.get_next_level_info()
-        prev_min = LEVELS[LEVELS.index(next_level) - 1]["min_points"] if LEVELS.index(next_level) > 0 else 0
-        if next_level["min_points"] <= prev_min:
-            return 0
-        return min(100, (current - prev_min) / (next_level["min_points"] - prev_min) * 100)
-    
-    def get_daily_calorie_target(self) -> int:
-        tmb = calcular_tmb(self.current_weight, self.altura, self.idade, self.sexo)
-        return calcular_meta_calorica(tmb, self.objetivo, self.nivel_atividade)
-    
-    def get_tmb(self) -> float:
-        return calcular_tmb(self.current_weight, self.altura, self.idade, self.sexo)
-    
-    def get_tdee(self) -> float:
-        tmb = self.get_tmb()
-        return tmb * ACTIVITY_LEVELS.get(self.nivel_atividade, 1.55)
+
+    def meta_calorica(self):
+        tmb = calc_tmb(self.peso_atual, self.altura, self.idade, self.sexo)
+        tdee = calc_tdee(tmb, self.nivel_atividade)
+        return calc_meta(tdee, self.objetivo)
+
+    def tmb(self):
+        return calc_tmb(self.peso_atual, self.altura, self.idade, self.sexo)
+
+    def today_str(self):
+        return date.today().isoformat()
+
+    def today_meals(self):
+        return [m for m in self.meals_today if m.get("date") == self.today_str()]
+
+    def today_calories(self):
+        return sum(m.get("calories", 0) for m in self.today_meals())
+
+    def add_points(self, pts, source=""):
+        self.total_points += pts
+        self.points_log.append({"pts": pts, "source": source, "date": datetime.now().isoformat()})
 
 # ============================================================================
-# SISTEMA DE PONTOS
+# SESSION STATE
 # ============================================================================
-class PointsSystem:
-    REWARDS = {
-        "checkin": 10,
-        "meal": 15,
-        "meal_with_photo": 5,
-        "weight_log": 10,
-        "calorie_goal_achieved": 30,
-        "streak_7_days": 100,
-        "streak_30_days": 500,
-    }
-    
-    @classmethod
-    def calculate_daily_points(cls, has_checkin: bool, meals_count: int, meals_with_photo: int, 
-                                has_weight: bool, calorie_goal_achieved: bool, current_streak: int) -> int:
-        points = 0
-        if has_checkin:
-            points += cls.REWARDS["checkin"]
-        points += meals_count * cls.REWARDS["meal"]
-        points += meals_with_photo * cls.REWARDS["meal_with_photo"]
-        if has_weight:
-            points += cls.REWARDS["weight_log"]
-        if calorie_goal_achieved:
-            points += cls.REWARDS["calorie_goal_achieved"]
-        if current_streak >= 7 and current_streak % 7 == 0:
-            points += cls.REWARDS["streak_7_days"]
-        if current_streak >= 30 and current_streak % 30 == 0:
-            points += cls.REWARDS["streak_30_days"]
-        return points
+if "state" not in st.session_state:
+    st.session_state.state = AppState()
+
+S: AppState = st.session_state.state
 
 # ============================================================================
-# PROCESSAMENTO
+# HELPERS
 # ============================================================================
-def process_checkin(state: BehavioralState, emotion: str) -> Tuple[BehavioralState, int]:
-    now_utc = datetime.now().isoformat()
-    
-    # Calcular streak
-    if state.last_checkin:
-        try:
-            last = datetime.fromisoformat(state.last_checkin.replace('Z', '+00:00'))
-            delta = (datetime.now() - last).days
-            if delta == 1:
-                state.current_streak += 1
-            elif delta > 1:
-                state.current_streak = 1
-            else:
-                state.current_streak = state.current_streak
-        except:
-            state.current_streak = 1
-    else:
-        state.current_streak = 1
-    
-    state.longest_streak = max(state.longest_streak, state.current_streak)
-    state.total_checkins += 1
-    state.last_checkin = now_utc
-    
-    state.emotion_history.append({"emotion": emotion, "timestamp": now_utc})
-    state.emotion_history = state.emotion_history[-50:]
-    
-    # Calcular pontos do dia (parcial)
-    today = datetime.now().date().isoformat()
-    today_meals = [m for m in state.meals_today if m.get("date") == today]
-    meals_with_photo = sum(1 for m in today_meals if m.get("photo_url"))
-    total_calories = sum(m.get("calories", 0) for m in today_meals)
-    calorie_goal = state.get_daily_calorie_target()
-    
-    daily_points = PointsSystem.calculate_daily_points(
-        has_checkin=True,
-        meals_count=len(today_meals),
-        meals_with_photo=meals_with_photo,
-        has_weight=False,
-        calorie_goal_achieved=total_calories <= calorie_goal,
-        current_streak=state.current_streak
-    )
-    
-    state.total_points += daily_points
-    state.points_history.append({"points": daily_points, "date": now_utc, "source": "checkin"})
-    
-    # Atualizar nível
-    new_level = 0
-    for i, level in enumerate(LEVELS):
-        if state.total_points >= level["min_points"]:
-            new_level = i
-    state.current_level = new_level
-    
-    return state, daily_points
+def save():
+    st.session_state.state = S
 
-def process_meal(state: BehavioralState, meal_type: str, description: str, calories: int, photo_url: str = None) -> Tuple[BehavioralState, int]:
-    now_utc = datetime.now().isoformat()
-    today = datetime.now().date().isoformat()
-    
-    # Limpar refeições antigas
-    state.meals_today = [m for m in state.meals_today if m.get("date") == today]
-    
-    has_photo = photo_url is not None
-    state.meals_today.append({
-        "date": today,
-        "type": meal_type,
-        "description": description,
-        "calories": calories,
-        "photo_url": photo_url,
-        "time": datetime.now().strftime("%H:%M"),
-        "has_photo": has_photo,
-    })
-    
-    # Calcular pontos do dia (parcial)
-    today_meals = state.meals_today
-    meals_with_photo = sum(1 for m in today_meals if m.get("photo_url"))
-    total_calories = sum(m.get("calories", 0) for m in today_meals)
-    calorie_goal = state.get_daily_calorie_target()
-    has_checkin_today = state.last_checkin and datetime.fromisoformat(state.last_checkin.replace('Z', '+00:00')).date() == datetime.now().date()
-    
-    daily_points = PointsSystem.calculate_daily_points(
-        has_checkin=has_checkin_today,
-        meals_count=len(today_meals),
-        meals_with_photo=meals_with_photo,
-        has_weight=False,
-        calorie_goal_achieved=total_calories <= calorie_goal,
-        current_streak=state.current_streak
-    )
-    
-    # Atualizar pontos totais (substituindo os anteriores do dia)
-    # Remover pontos antigos do dia
-    today_start = datetime.now().replace(hour=0, minute=0, second=0, microsecond=0).isoformat()
-    state.points_history = [p for p in state.points_history if p.get("date", "") < today_start]
-    state.points_history.append({"points": daily_points, "date": now_utc, "source": "meals"})
-    
-    # Recalcular total
-    state.total_points = sum(p["points"] for p in state.points_history)
-    
-    # Atualizar nível
-    new_level = 0
-    for i, level in enumerate(LEVELS):
-        if state.total_points >= level["min_points"]:
-            new_level = i
-    state.current_level = new_level
-    
-    return state, daily_points
-
-def process_weight(state: BehavioralState, weight: float) -> BehavioralState:
-    now_utc = datetime.now().isoformat()
-    state.current_weight = weight
-    state.weight_history.append({"weight": weight, "timestamp": now_utc})
-    state.weight_history = state.weight_history[-90:]
-    
-    # Verificar se bateu meta mensal
-    progress = calcular_progresso_peso(weight, state.peso_inicio_mes, state.meta_mensal_kg)
-    if progress["percentual"] >= 100 and not state.is_premium:
-        # Sugerir upgrade para premium
-        pass
-    
-    return state
-
-# ============================================================================
-# REPOSITORY (mock)
-# ============================================================================
-class StateRepository:
-    def __init__(self):
-        self._state = None
-    
-    def load_state(self, user_id: str) -> Optional[BehavioralState]:
-        if self._state:
-            return self._state
-        return None
-    
-    def save_state(self, state: BehavioralState) -> bool:
-        self._state = state
-        return True
-
-repository = StateRepository()
-
-# ============================================================================
-# UI COMPONENTS
-# ============================================================================
-def render_narrative(state: BehavioralState):
-    level_info = state.get_level_info()
-    next_level = state.get_next_level_info()
-    
+def pbar(label_left, label_right, pct, cls="green"):
+    pct = max(0, min(100, pct))
     st.markdown(f"""
-    <div class="narrative-box">
-        <div style="display: flex; justify-content: space-between; align-items: center;">
-            <div>
-                <div style="font-size: 0.8rem; color: #92400e;">Bom dia! Você está evoluindo.</div>
-                <div style="font-weight: 500; margin-top: 4px;">{level_info['desc']}</div>
-            </div>
-            <div class="level-badge">{level_info['name']}</div>
-        </div>
-        <div style="margin-top: 12px;">
-            <div class="points-badge">⭐ {state.total_points} pontos</div>
-        </div>
-    </div>
-    """, unsafe_allow_html=True)
+    <div class="pbar-wrap">
+      <div class="pbar-header"><span>{label_left}</span><span>{label_right}</span></div>
+      <div class="pbar-track"><div class="pbar-fill {cls}" style="width:{pct}%"></div></div>
+    </div>""", unsafe_allow_html=True)
 
-def render_metrics(state: BehavioralState):
-    today = datetime.now().date().isoformat()
-    today_meals = [m for m in state.meals_today if m.get("date") == today]
-    total_calories = sum(m.get("calories", 0) for m in today_meals)
-    calorie_target = state.get_daily_calorie_target()
-    tmb = state.get_tmb()
-    tdee = state.get_tdee()
-    
-    st.markdown(f"""
-    <div class="metric-grid">
-        <div class="metric-card">
-            <div class="metric-value">{state.current_streak}</div>
-            <div class="metric-label">🔥 Sequência</div>
-        </div>
-        <div class="metric-card">
-            <div class="metric-value">{len(today_meals)}</div>
-            <div class="metric-label">🍽️ Refeições</div>
-        </div>
-        <div class="metric-card">
-            <div class="metric-value">{total_calories}</div>
-            <div class="metric-label">🔥 Calorias</div>
-        </div>
-    </div>
-    """, unsafe_allow_html=True)
-    
-    # Barra de calorias
-    percent = min(100, (total_calories / calorie_target) * 100)
-    st.markdown(f"""
-    <div style="font-size: 0.7rem; color: #64748b;">Meta diária: {calorie_target} kcal | TMB: {tmb:.0f} | TDEE: {tdee:.0f}</div>
-    <div class="progress-bar"><div class="progress-fill" style="width: {percent}%;"></div></div>
-    """, unsafe_allow_html=True)
-    
-    # Progresso para próximo nível
-    next_level = state.get_next_level_info()
-    progress = state.get_progress_to_next_level()
-    st.markdown(f"""
-    <div style="margin-top: 16px;">
-        <div style="font-size: 0.7rem; color: #64748b;">Próximo nível: {next_level['name']}</div>
-        <div class="progress-bar"><div class="progress-fill" style="width: {progress}%; background: linear-gradient(90deg, #8b5cf6, #6d28d9);"></div></div>
-        <div style="font-size: 0.7rem; color: #64748b; text-align: right;">{state.total_points} / {next_level['min_points']} pontos</div>
-    </div>
-    """, unsafe_allow_html=True)
+def section(title, icon=""):
+    t = title.replace(icon, f"<span>{icon}</span>") if icon else title
+    st.markdown(f'<div class="section-title">{t}</div>', unsafe_allow_html=True)
 
-def render_meals(state: BehavioralState) -> Tuple[BehavioralState, bool]:
-    today = datetime.now().date().isoformat()
-    today_meals = [m for m in state.meals_today if m.get("date") == today]
-    
-    st.markdown("### 🍽️ Refeições de hoje")
-    
-    if today_meals:
-        for meal in today_meals:
-            meal_name = MEAL_TYPES.get(meal.get("type"), {}).get("name", meal.get("type"))
-            photo_badge = " 📸" if meal.get("photo_url") else ""
+# ============================================================================
+# WORDMARK / LOGO
+# ============================================================================
+st.markdown("""
+<div class="wordmark">
+  <div class="wordmark-icon">🌿</div>
+  <div>
+    <div class="wordmark-text">NutriFlow</div>
+    <div class="wordmark-tagline">Transformação Inteligente</div>
+  </div>
+</div>
+""", unsafe_allow_html=True)
+
+# ============================================================================
+# HERO CARD
+# ============================================================================
+level = get_level(S.total_points)
+hora = datetime.now().hour
+saudacao = "Bom dia" if hora < 12 else ("Boa tarde" if hora < 18 else "Boa noite")
+
+st.markdown(f"""
+<div class="hero">
+  <div class="hero-streak">
+    <div class="hero-streak-num">{S.streak}</div>
+    <div class="hero-streak-label">dias seguidos</div>
+  </div>
+  <div class="hero-eyebrow">{saudacao}, {S.nome.split()[0]}</div>
+  <div class="hero-name">Sua jornada<br/><em style="font-style:italic;font-weight:300">continua hoje.</em></div>
+  <div class="hero-sub">{level['desc']}</div>
+  <div class="hero-badge">{level['icon']} {level['name']} · ⭐ {S.total_points} pts</div>
+</div>
+""", unsafe_allow_html=True)
+
+# ============================================================================
+# STAT CARDS
+# ============================================================================
+meta = S.meta_calorica()
+cal_today = S.today_calories()
+diff_peso = round(S.peso_inicio - S.peso_atual, 1)
+diff_str = f"-{diff_peso} kg" if diff_peso >= 0 else f"+{abs(diff_peso)} kg"
+
+st.markdown(f"""
+<div class="stats-row">
+  <div class="stat-card">
+    <div class="stat-num green">{cal_today}</div>
+    <div class="stat-label">kcal hoje</div>
+  </div>
+  <div class="stat-card">
+    <div class="stat-num">{meta}</div>
+    <div class="stat-label">meta diária</div>
+  </div>
+  <div class="stat-card">
+    <div class="stat-num gold">{diff_str}</div>
+    <div class="stat-label">progresso</div>
+  </div>
+</div>
+""", unsafe_allow_html=True)
+
+# Calorie progress bar
+pct_cal = (cal_today / meta * 100) if meta > 0 else 0
+pbar(f"🔥 {cal_today} kcal consumidas", f"Meta: {meta} kcal", pct_cal, "green")
+st.markdown("<div style='margin-bottom:4px'></div>", unsafe_allow_html=True)
+
+# Level progress bar
+lp = level_progress(S.total_points)
+nl = get_next_level(S.total_points)
+pbar(f"{level['icon']} {level['name']}", f"→ {nl['icon']} {nl['name']} ({nl['min']} pts)", lp, "gold")
+
+st.markdown("<hr class='divider'>", unsafe_allow_html=True)
+
+# ============================================================================
+# ABAS PRINCIPAIS
+# ============================================================================
+tabs = st.tabs(["🥗 Refeições", "⚖️ Peso", "📊 Análises", "👤 Perfil"])
+
+# ─────────────────────────────────────────────────────────────────────────────
+# ABA: REFEIÇÕES
+# ─────────────────────────────────────────────────────────────────────────────
+with tabs[0]:
+    section("Refeições de hoje")
+
+    today_m = S.today_meals()
+    if today_m:
+        for m in today_m:
+            mt = MEAL_TYPES.get(m.get("type", "cafe"), MEAL_TYPES["cafe"])
+            photo_badge = '<span class="meal-photo-badge">📸 foto</span>' if m.get("has_photo") else ""
             st.markdown(f"""
-            <div class="meal-card">
-                <div class="meal-header">
-                    <span class="meal-type">{meal_name}{photo_badge}</span>
-                    <span class="meal-time">{meal.get('time', '--:--')}</span>
-                </div>
-                <div class="meal-desc">{meal.get('description', '')}</div>
-                <div class="meal-cal">🔥 {meal.get('calories', 0)} kcal</div>
+            <div class="meal-item">
+              <div>
+                <div class="meal-type-tag">{mt['icon']} {mt['name']}{photo_badge}</div>
+                <div class="meal-desc">{m.get('description','')}</div>
+                <div class="meal-time">⏱ {m.get('time','--:--')}</div>
+              </div>
+              <div class="meal-kcal">{m.get('calories',0)}<br/><span style="font-size:.6rem;color:#7d8590;font-family:'DM Sans'">kcal</span></div>
             </div>
             """, unsafe_allow_html=True)
     else:
-        st.info("Nenhuma refeição registrada hoje.")
-    
-    # Formulário de nova refeição
-    with st.expander("➕ Adicionar refeição", expanded=not today_meals):
-        col1, col2 = st.columns(2)
-        with col1:
-            meal_type = st.selectbox("Tipo", options=list(MEAL_TYPES.keys()), format_func=lambda x: MEAL_TYPES[x]["name"])
-        with col2:
-            calories = st.number_input("Calorias (kcal)", min_value=0, max_value=1500, value=MEAL_TYPES[meal_type]["cal_hint"], step=50)
-        
-        description = st.text_area("O que você comeu?", placeholder="Ex: Arroz integral, frango grelhado, salada", height=68)
-        photo = st.camera_input("Tirar foto do prato (opcional)", help="Fotografar ajuda na consciência alimentar + ganha +5 pontos!")
-        
-        if st.button("✅ Salvar refeição", use_container_width=True):
-            if description:
-                photo_url = None
-                has_photo = False
-                if photo:
-                    photo_url = "temp_photo_url"
-                    has_photo = True
-                state, points_earned = process_meal(state, meal_type, description, calories, photo_url)
-                if has_photo:
-                    st.success(f"🍽️ Refeição registrada! +{points_earned} pontos (📸 bônus por foto!)")
-                else:
-                    st.success(f"🍽️ Refeição registrada! +{points_earned} pontos")
-                return state, True
-            else:
-                st.warning("Descreva o que você comeu")
-    return state, False
-
-def render_weight_section(state: BehavioralState) -> Tuple[BehavioralState, bool]:
-    st.markdown("### ⚖️ Acompanhamento de peso")
-    
-    col1, col2 = st.columns(2)
-    with col1:
-        new_weight = st.number_input("Peso atual (kg)", min_value=30.0, max_value=250.0, value=state.current_weight, step=0.1)
-    with col2:
-        target_weight = st.number_input("Peso desejado (kg)", min_value=30.0, max_value=250.0, value=state.target_weight, step=0.5)
-    
-    if new_weight != state.current_weight:
-        if st.button("💾 Registrar peso (+10 pontos)", use_container_width=True):
-            state = process_weight(state, new_weight)
-            # Adicionar pontos por registrar peso
-            daily_points = PointsSystem.calculate_daily_points(
-                has_checkin=False, meals_count=0, meals_with_photo=0,
-                has_weight=True, calorie_goal_achieved=False, current_streak=state.current_streak
-            )
-            state.total_points += daily_points
-            state.points_history.append({"points": daily_points, "date": datetime.now().isoformat(), "source": "weight"})
-            st.success(f"⚖️ Peso registrado! +{daily_points} pontos")
-            return state, True
-    
-    if target_weight != state.target_weight:
-        state.target_weight = target_weight
-        st.success("Meta de peso atualizada!")
-        return state, True
-    
-    # Gráfico de evolução
-    if len(state.weight_history) >= 2:
-        df = pd.DataFrame(state.weight_history[-30:])
-        df["timestamp"] = pd.to_datetime(df["timestamp"])
-        fig = px.line(df, x="timestamp", y="weight", title="Evolução do peso", markers=True)
-        fig.update_layout(height=250, margin=dict(l=0, r=0, t=40, b=0))
-        fig.update_traces(line=dict(color="#f59e0b", width=2))
-        st.plotly_chart(fig, use_container_width=True, config={"displayModeBar": False})
-    
-    return state, False
-
-def render_checkin_section(state: BehavioralState) -> Tuple[BehavioralState, bool]:
-    st.markdown("---")
-    st.markdown("### 😊 Check-in diário")
-    
-    emotion_cols = st.columns(3)
-    selected = None
-    for idx, (key, data) in enumerate(EMOTIONS.items()):
-        with emotion_cols[idx % 3]:
-            if st.button(f"{data['icon']} {data['label']}", key=f"emotion_{key}", use_container_width=True):
-                selected = key
-    
-    if selected:
-        state, points_earned = process_checkin(state, selected)
-        st.success(f"✅ Presença registrada! Você está se sentindo {EMOTIONS[selected]['label']}. +{points_earned} pontos")
-        return state, True
-    
-    return state, False
-
-def render_history(state: BehavioralState):
-    st.markdown("### 📊 Análises e histórico")
-    
-    tab1, tab2, tab3, tab4 = st.tabs(["📈 Evolução", "😊 Emoções", "⭐ Pontos", "🔬 Correlações"])
-    
-    with tab1:
-        if len(state.weight_history) >= 2:
-            df = pd.DataFrame(state.weight_history[-30:])
-            df["timestamp"] = pd.to_datetime(df["timestamp"])
-            fig = px.line(df, x="timestamp", y="weight", title="Evolução do peso", markers=True)
-            fig.update_layout(height=300, margin=dict(l=0, r=0, t=40, b=0))
-            st.plotly_chart(fig, use_container_width=True)
-        else:
-            st.info("Registre peso para ver sua evolução")
-    
-    with tab2:
-        if state.emotion_history:
-            df = pd.DataFrame(state.emotion_history[-30:])
-            df["date"] = pd.to_datetime(df["timestamp"]).dt.date
-            emotion_counts = df.groupby("emotion").size()
-            if not emotion_counts.empty:
-                fig = px.bar(x=emotion_counts.index, y=emotion_counts.values, 
-                            labels={"x": "Emoção", "y": "Frequência"}, color=emotion_counts.index)
-                fig.update_layout(height=250, margin=dict(l=0, r=0, t=20, b=0))
-                st.plotly_chart(fig, use_container_width=True)
-            
-            # Correlação humor × refeição
-            st.markdown("#### 🔍 Correlação humor × alimentação")
-            st.caption("Em breve: análise de como seu humor afeta suas escolhas alimentares")
-        else:
-            st.info("Registre seu estado emocional para ver análises")
-    
-    with tab3:
-        col1, col2, col3 = st.columns(3)
-        col1.metric("Total check-ins", state.total_checkins)
-        col2.metric("Maior sequência", f"{state.longest_streak} dias")
-        col3.metric("Pontos totais", state.total_points)
-        
-        if state.points_history:
-            df_points = pd.DataFrame(state.points_history[-30:])
-            df_points["date"] = pd.to_datetime(df_points["date"]).dt.date
-            points_by_day = df_points.groupby("date")["points"].sum().reset_index()
-            fig = px.bar(points_by_day, x="date", y="points", title="Pontos por dia")
-            fig.update_layout(height=250, margin=dict(l=0, r=0, t=40, b=0))
-            st.plotly_chart(fig, use_container_width=True)
-    
-    with tab4:
-        st.markdown("#### 📊 Análise comportamental")
-        
-        # Correlação humor × horário
-        if state.emotion_history:
-            df_emo = pd.DataFrame(state.emotion_history)
-            df_emo["hour"] = pd.to_datetime(df_emo["timestamp"]).dt.hour
-            emo_by_hour = df_emo.groupby(["hour", "emotion"]).size().unstack(fill_value=0)
-            if not emo_by_hour.empty:
-                fig = px.imshow(emo_by_hour.T, labels=dict(x="Hora", y="Emoção", color="Frequência"),
-                                title="Mapa de calor: Emoções por horário")
-                fig.update_layout(height=300)
-                st.plotly_chart(fig, use_container_width=True)
-        
-        # Correlação calorias × humor (se tiver dados)
-        st.caption("💡 Análises avançadas disponíveis no plano Premium")
-
-def render_profile(state: BehavioralState) -> Tuple[BehavioralState, bool]:
-    st.markdown("### 👤 Meu perfil")
-    
-    with st.form("profile_form"):
-        col1, col2 = st.columns(2)
-        with col1:
-            nome = st.text_input("Nome", state.nome)
-            idade = st.number_input("Idade", 18, 100, state.idade)
-            sexo = st.selectbox("Sexo", ["M", "F"], index=0 if state.sexo == "M" else 1)
-        with col2:
-            altura = st.number_input("Altura (m)", 1.40, 2.20, state.altura, 0.01)
-            objetivo = st.selectbox("Objetivo", options=list(GOAL_TYPES.keys()), format_func=lambda x: GOAL_TYPES[x]["label"])
-            atividade = st.selectbox("Nível de atividade", options=list(ACTIVITY_LEVELS.keys()), 
-                                     format_func=lambda x: x.capitalize())
-        
-        if st.form_submit_button("Salvar perfil"):
-            state.nome = nome
-            state.idade = idade
-            state.sexo = sexo
-            state.altura = altura
-            state.objetivo = objetivo
-            state.nivel_atividade = atividade
-            st.success("Perfil atualizado!")
-            return state, True
-    
-    # Card de upgrade para premium
-    if not state.is_premium:
-        st.markdown("---")
-        st.markdown("### 💎 Upgrade para Premium")
         st.markdown("""
-        - 📊 Análises avançadas (correlações completas)
-        - 📥 Exportar dados (CSV/PDF)
-        - 📈 Histórico ilimitado
-        - 🏆 Desafios exclusivos
-        """)
-        if st.button("🔥 Assinar Premium (R$ 19,90/mês)", use_container_width=True):
-            st.success("🎉 Premium ativado! (modo demonstração)")
-            state.is_premium = True
-            return state, True
-    
-    return state, False
+        <div class="empty-state">
+          <div class="icon">🥗</div>
+          <div class="msg">Nenhuma refeição registrada hoje.<br/>Adicione sua primeira refeição abaixo.</div>
+        </div>""", unsafe_allow_html=True)
 
-def render_premium_banner(state: BehavioralState):
-    if not state.is_premium:
-        st.info("💎 **Desbloqueie análises avançadas e exportação de dados com o plano Premium!**")
-        if st.button("Ver planos", use_container_width=True):
-            st.session_state["show_premium"] = True
+    st.markdown("<div style='margin-top:8px'></div>", unsafe_allow_html=True)
+    with st.expander("➕ Registrar refeição", expanded=not today_m):
+        c1, c2 = st.columns(2)
+        with c1:
+            meal_type = st.selectbox(
+                "Tipo de refeição",
+                options=list(MEAL_TYPES.keys()),
+                format_func=lambda x: f"{MEAL_TYPES[x]['icon']} {MEAL_TYPES[x]['name']}"
+            )
+        with c2:
+            calories = st.number_input("Calorias (kcal)", 0, 2000,
+                                       MEAL_TYPES[meal_type]["cal_hint"], 25)
+        desc = st.text_area("Descreva sua refeição",
+                             placeholder="Ex: Arroz integral, frango grelhado, brócolis refogado…",
+                             height=72)
+        photo = st.camera_input("📸 Foto do prato (bônus +5 pts)")
 
-# ============================================================================
-# MAIN
-# ============================================================================
-def main():
-    # Inicializar estado
-    user_id = "demo-user"
-    state = repository.load_state(user_id)
-    if not state:
-        state = BehavioralState(user_id=user_id)
-    
-    # Renderizar UI
-    render_narrative(state)
-    render_metrics(state)
-    
-    tabs = st.tabs(["🍽️ Refeições", "⚖️ Peso", "📊 Análises", "👤 Perfil"])
-    
-    needs_refresh = False
-    
-    with tabs[0]:
-        state, refreshed = render_meals(state)
-        if refreshed: needs_refresh = True
-    
-    with tabs[1]:
-        state, refreshed = render_weight_section(state)
-        if refreshed: needs_refresh = True
-    
-    with tabs[2]:
-        render_history(state)
-        render_premium_banner(state)
-    
-    with tabs[3]:
-        state, refreshed = render_profile(state)
-        if refreshed: needs_refresh = True
-    
-    # Check-in rápido
-    state, refreshed = render_checkin_section(state)
-    if refreshed: needs_refresh = True
-    
-    # Salvar estado
-    repository.save_state(state)
-    
-    if needs_refresh:
+        if st.button("✅ Salvar refeição", use_container_width=True):
+            if desc.strip():
+                has_photo = photo is not None
+                S.meals_today.append({
+                    "date": S.today_str(),
+                    "type": meal_type,
+                    "description": desc.strip(),
+                    "calories": calories,
+                    "has_photo": has_photo,
+                    "time": datetime.now().strftime("%H:%M"),
+                })
+                pts = POINTS["meal"] + (POINTS["meal_photo"] if has_photo else 0)
+                S.add_points(pts, "meal")
+                save()
+                bonus = " + bônus de foto 📸" if has_photo else ""
+                st.success(f"Refeição salva! +{pts} pontos{bonus}")
+                st.rerun()
+            else:
+                st.warning("Descreva o que você comeu.")
+
+# ─────────────────────────────────────────────────────────────────────────────
+# ABA: PESO
+# ─────────────────────────────────────────────────────────────────────────────
+with tabs[1]:
+    section("Registrar peso")
+
+    c1, c2 = st.columns(2)
+    with c1:
+        novo_peso = st.number_input("Peso atual (kg)", 30.0, 300.0, S.peso_atual, 0.1)
+    with c2:
+        nova_meta = st.number_input("Peso desejado (kg)", 30.0, 300.0, S.peso_meta, 0.5)
+
+    if st.button("💾 Registrar peso (+10 pts)", use_container_width=True):
+        S.peso_atual = novo_peso
+        S.peso_meta = nova_meta
+        S.weight_history.append({"weight": novo_peso, "date": S.today_str()})
+        S.add_points(POINTS["weight"], "weight")
+        save()
+        st.success(f"Peso registrado: {novo_peso} kg · +10 pontos")
         st.rerun()
-    
-    st.caption(f"EmagreSim • Nível {state.get_level_info()['name']} • {state.total_points} pontos • {state.current_streak} dias de sequência")
 
-if __name__ == "__main__":
-    main()
+    # Métricas de peso
+    from math import isfinite
+    imc = S.peso_atual / (S.altura ** 2)
+    faltam = max(0, S.peso_atual - S.peso_meta)
+    perdidos = max(0, S.peso_inicio - S.peso_atual)
+
+    c1, c2, c3 = st.columns(3)
+    c1.metric("IMC", f"{imc:.1f}")
+    c2.metric("Perdidos", f"{perdidos:.1f} kg")
+    c3.metric("Faltam", f"{faltam:.1f} kg")
+
+    # Gráfico
+    if len(S.weight_history) >= 2:
+        df = pd.DataFrame(S.weight_history[-60:])
+        df["date"] = pd.to_datetime(df["date"])
+        fig = go.Figure()
+        fig.add_trace(go.Scatter(
+            x=df["date"], y=df["weight"],
+            mode="lines+markers",
+            line=dict(color="#2dce89", width=2.5),
+            marker=dict(color="#2dce89", size=6),
+            fill="tozeroy",
+            fillcolor="rgba(45,206,137,0.07)"
+        ))
+        fig.add_hline(y=S.peso_meta, line=dict(color="#f0b429", width=1, dash="dot"),
+                      annotation_text=f"Meta: {S.peso_meta} kg",
+                      annotation_font_color="#f0b429", annotation_font_size=10)
+        fig.update_layout(
+            height=240, margin=dict(l=0, r=0, t=16, b=0),
+            paper_bgcolor="rgba(0,0,0,0)",
+            plot_bgcolor="rgba(0,0,0,0)",
+            font=dict(color="#7d8590", size=10, family="DM Sans"),
+            xaxis=dict(gridcolor="#21262d", showgrid=True),
+            yaxis=dict(gridcolor="#21262d", showgrid=True),
+            showlegend=False,
+        )
+        st.plotly_chart(fig, use_container_width=True, config={"displayModeBar": False})
+    else:
+        st.markdown("""
+        <div class="empty-state" style="padding:20px">
+          <div class="icon">📉</div>
+          <div class="msg">Registre ao menos 2 pesos para ver seu gráfico.</div>
+        </div>""", unsafe_allow_html=True)
+
+# ─────────────────────────────────────────────────────────────────────────────
+# ABA: ANÁLISES
+# ─────────────────────────────────────────────────────────────────────────────
+with tabs[2]:
+    section("Dashboard analítico")
+
+    sub = st.tabs(["Pontos", "Emoções", "Calorias"])
+
+    with sub[0]:
+        c1, c2, c3 = st.columns(3)
+        c1.metric("Total de pontos", S.total_points)
+        c2.metric("Maior sequência", f"{S.streak_max}d")
+        c3.metric("Check-ins", S.total_checkins)
+
+        if S.points_log:
+            df_pts = pd.DataFrame(S.points_log)
+            df_pts["date"] = pd.to_datetime(df_pts["date"]).dt.date
+            by_day = df_pts.groupby("date")["pts"].sum().reset_index()
+            fig = go.Figure(go.Bar(
+                x=by_day["date"], y=by_day["pts"],
+                marker_color="#f0b429", marker_line_width=0,
+            ))
+            fig.update_layout(
+                height=220, margin=dict(l=0, r=0, t=8, b=0),
+                paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)",
+                font=dict(color="#7d8590", size=10, family="DM Sans"),
+                xaxis=dict(gridcolor="#21262d"), yaxis=dict(gridcolor="#21262d"),
+                showlegend=False,
+            )
+            st.plotly_chart(fig, use_container_width=True, config={"displayModeBar": False})
+        else:
+            st.info("Complete check-ins e refeições para acumular pontos.")
+
+    with sub[1]:
+        if S.emotion_history:
+            df_emo = pd.DataFrame(S.emotion_history)
+            counts = df_emo["emotion"].value_counts().reset_index()
+            counts.columns = ["emotion","count"]
+            colors_map = {k: v["color"] for k,v in EMOTIONS.items()}
+            counts["color"] = counts["emotion"].map(colors_map).fillna("#7d8590")
+            fig = go.Figure(go.Bar(
+                x=counts["emotion"], y=counts["count"],
+                marker_color=counts["color"], marker_line_width=0,
+            ))
+            fig.update_layout(
+                height=220, margin=dict(l=0, r=0, t=8, b=0),
+                paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)",
+                font=dict(color="#7d8590", size=10, family="DM Sans"),
+                xaxis=dict(gridcolor="#21262d"), yaxis=dict(gridcolor="#21262d"),
+            )
+            st.plotly_chart(fig, use_container_width=True, config={"displayModeBar": False})
+        else:
+            st.info("Faça seu check-in emocional para ver análises de humor.")
+
+    with sub[2]:
+        if S.meals_today:
+            by_type = {}
+            for m in S.today_meals():
+                t = MEAL_TYPES.get(m.get("type","cafe"),{}).get("name","Outro")
+                by_type[t] = by_type.get(t, 0) + m.get("calories", 0)
+            fig = go.Figure(go.Pie(
+                labels=list(by_type.keys()), values=list(by_type.values()),
+                hole=0.55,
+                marker=dict(colors=["#2dce89","#58a6ff","#f0b429","#f85149"]),
+            ))
+            fig.update_layout(
+                height=220, margin=dict(l=0, r=0, t=8, b=0),
+                paper_bgcolor="rgba(0,0,0,0)",
+                font=dict(color="#7d8590", size=10, family="DM Sans"),
+                showlegend=True,
+                legend=dict(font=dict(color="#7d8590")),
+            )
+            st.plotly_chart(fig, use_container_width=True, config={"displayModeBar": False})
+        else:
+            st.info("Registre refeições para ver distribuição calórica.")
+
+    # PREMIUM UPSELL
+    if not S.is_premium:
+        st.markdown("""
+        <div class="premium-card">
+          <div class="premium-title">NutriFlow Premium</div>
+          <div style="font-size:.78rem;color:#7d8590;margin-bottom:14px">
+            Desbloqueie análises avançadas e leve sua transformação ao próximo nível.
+          </div>
+          <div class="premium-feature">Correlação humor × alimentação</div>
+          <div class="premium-feature">Exportação de relatórios (PDF / CSV)</div>
+          <div class="premium-feature">Histórico ilimitado de 365 dias</div>
+          <div class="premium-feature">Desafios exclusivos e conquistas</div>
+          <div class="premium-feature">Suporte prioritário</div>
+        </div>
+        """, unsafe_allow_html=True)
+        st.markdown("<div style='margin-top:12px'></div>", unsafe_allow_html=True)
+        if st.button("🚀 Assinar Premium — R$ 19,90/mês", use_container_width=True):
+            S.is_premium = True
+            save()
+            st.success("🎉 Bem-vindo ao Premium! Recursos desbloqueados.")
+            st.rerun()
+
+# ─────────────────────────────────────────────────────────────────────────────
+# ABA: PERFIL
+# ─────────────────────────────────────────────────────────────────────────────
+with tabs[3]:
+    section("Meu perfil")
+
+    # Level card
+    lv = get_level(S.total_points)
+    lp2 = level_progress(S.total_points)
+    nl2 = get_next_level(S.total_points)
+    st.markdown(f"""
+    <div class="level-card">
+      <div class="level-name">{lv['icon']} {lv['name']}</div>
+      <div class="level-desc">{lv['desc']}</div>
+    </div>
+    """, unsafe_allow_html=True)
+    pbar(f"⭐ {S.total_points} pts", f"→ {nl2['icon']} {nl2['name']} ({nl2['min']} pts)", lp2, "gold")
+    st.markdown("<div style='margin-bottom:16px'></div>", unsafe_allow_html=True)
+
+    with st.form("profile_form"):
+        c1, c2 = st.columns(2)
+        with c1:
+            nome   = st.text_input("Nome", S.nome)
+            idade  = st.number_input("Idade", 16, 100, S.idade)
+            sexo   = st.selectbox("Sexo biológico", ["M","F"],
+                                  index=0 if S.sexo == "M" else 1,
+                                  format_func=lambda x: "Masculino" if x == "M" else "Feminino")
+        with c2:
+            altura = st.number_input("Altura (m)", 1.40, 2.20, S.altura, 0.01)
+            obj    = st.selectbox("Objetivo", list(GOAL_TYPES.keys()),
+                                  format_func=lambda x: GOAL_TYPES[x]["label"])
+            ativ   = st.selectbox("Nível de atividade", list(ACTIVITY_LEVELS.keys()),
+                                  format_func=lambda x: ACTIVITY_LEVELS[x]["label"])
+        saved = st.form_submit_button("💾 Salvar perfil", use_container_width=True)
+        if saved:
+            S.nome = nome; S.idade = idade; S.sexo = sexo
+            S.altura = altura; S.objetivo = obj; S.nivel_atividade = ativ
+            save()
+            st.success("Perfil atualizado com sucesso!")
+
+    # Dados calculados
+    tmb_v = S.tmb()
+    tdee_v = calc_tdee(tmb_v, S.nivel_atividade)
+    st.markdown("<div style='margin-top:12px'></div>", unsafe_allow_html=True)
+    c1, c2, c3 = st.columns(3)
+    c1.metric("TMB", f"{tmb_v:.0f} kcal")
+    c2.metric("TDEE", f"{tdee_v:.0f} kcal")
+    c3.metric("Meta", f"{S.meta_calorica()} kcal")
+
+# ============================================================================
+# CHECK-IN EMOCIONAL (sempre visível)
+# ============================================================================
+st.markdown("<hr class='divider'>", unsafe_allow_html=True)
+section("Check-in emocional")
+st.markdown('<div style="font-size:.78rem;color:#7d8590;margin-bottom:12px;">Como você está se sentindo agora?</div>', unsafe_allow_html=True)
+
+cols = st.columns(len(EMOTIONS))
+for i, (key, data) in enumerate(EMOTIONS.items()):
+    with cols[i]:
+        if st.button(f"{data['icon']}\n{data['label']}", key=f"emo_{key}", use_container_width=True):
+            # Streak logic
+            if S.last_checkin:
+                try:
+                    last = datetime.fromisoformat(S.last_checkin).date()
+                    delta = (date.today() - last).days
+                    S.streak = S.streak + 1 if delta == 1 else (S.streak if delta == 0 else 1)
+                except:
+                    S.streak = 1
+            else:
+                S.streak = 1
+            S.streak_max = max(S.streak_max, S.streak)
+            S.total_checkins += 1
+            S.last_checkin = datetime.now().isoformat()
+            S.emotion_history.append({"emotion": key, "timestamp": datetime.now().isoformat()})
+            S.emotion_history = S.emotion_history[-90:]
+            S.add_points(POINTS["checkin"] + (POINTS["streak_7"] if S.streak > 0 and S.streak % 7 == 0 else 0), "checkin")
+            save()
+            st.success(f"{data['icon']} Check-in registrado! Você está: **{data['label']}** · +{POINTS['checkin']} pts")
+            st.rerun()
+
+# ============================================================================
+# FOOTER
+# ============================================================================
+st.markdown(f"""
+<div class="app-footer">
+  NUTRIFLOW · {level['icon']} {level['name']} · ⭐ {S.total_points} pts · 🔥 {S.streak} dias<br/>
+  Transformação Inteligente • Feito com 💚 para quem não desiste
+</div>
+""", unsafe_allow_html=True)
