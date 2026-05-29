@@ -1,15 +1,14 @@
-# app.py — EmagreSim v33.0 "Mindful Eating & Growth Core"
-# Foco: Emagrecimento/Ganho de Massa + Consciência Alimentar + Foto do Prato + Evolução Real
+# app.py — EmagreSim v34.0 "Complete Core"
+# Funcionalidades: Calculadora calórica dinâmica, sistema de pontos, análise de dados, monetização
+# Foco: Emagrecimento/Ganho de Massa + Consciência Alimentar + Foto do Prato + Gamificação Real
 
 import streamlit as st
 import pandas as pd
 import plotly.graph_objects as go
 import plotly.express as px
-from datetime import datetime, timezone, date, timedelta
+from datetime import datetime, date, timedelta
 import random
 import json
-import logging
-import traceback
 import hashlib
 from typing import Optional, Dict, List, Tuple
 from dataclasses import dataclass, field
@@ -19,12 +18,7 @@ from supabase import create_client, Client
 # ============================================================================
 # CONFIGURAÇÃO GLOBAL
 # ============================================================================
-RANDOM_SEED = 42
-random.seed(RANDOM_SEED)
-DEFAULT_TZ = timezone.utc
-
-logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
-logger = logging.getLogger("emagresim")
+DEFAULT_TZ = datetime.now().astimezone().tzinfo
 
 st.set_page_config(
     page_title="EmagreSim • Transformação",
@@ -33,9 +27,7 @@ st.set_page_config(
     initial_sidebar_state="collapsed",
 )
 
-# ============================================================================
-# CSS MODERNO
-# ============================================================================
+# CSS Moderno
 CSS = """
 <style>
     @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
@@ -52,7 +44,6 @@ CSS = """
         max-width: 680px !important;
     }
     
-    /* Cards */
     .card {
         background: white;
         border-radius: 20px;
@@ -62,7 +53,6 @@ CSS = """
         border: 1px solid #e2e8f0;
     }
     
-    /* Níveis */
     .level-badge {
         background: linear-gradient(135deg, #f59e0b, #ea580c);
         color: white;
@@ -73,7 +63,6 @@ CSS = """
         display: inline-block;
     }
     
-    /* Refeição */
     .meal-card {
         background: white;
         border: 1px solid #e2e8f0;
@@ -118,7 +107,6 @@ CSS = """
         overflow: hidden;
     }
     
-    /* Métricas Grid */
     .metric-grid {
         display: grid;
         grid-template-columns: repeat(3, 1fr);
@@ -144,7 +132,6 @@ CSS = """
         letter-spacing: 0.05em;
     }
     
-    /* Narrative Box */
     .narrative-box {
         background: linear-gradient(135deg, #fef3c7, #fde68a);
         border-radius: 20px;
@@ -153,7 +140,6 @@ CSS = """
         border: 1px solid #fcd34d;
     }
     
-    /* Progresso */
     .progress-bar {
         background: #e2e8f0;
         border-radius: 10px;
@@ -168,13 +154,25 @@ CSS = """
         transition: width 0.5s;
     }
     
+    .points-badge {
+        background: #fef3c7;
+        border-radius: 20px;
+        padding: 4px 12px;
+        font-size: 0.8rem;
+        font-weight: 600;
+        color: #92400e;
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+    }
+    
     #MainMenu, header, footer {display: none;}
 </style>
 """
 st.markdown(CSS, unsafe_allow_html=True)
 
 # ============================================================================
-# SUPABASE
+# SUPABASE (opcional)
 # ============================================================================
 def get_supabase() -> Optional[Client]:
     try:
@@ -183,8 +181,7 @@ def get_supabase() -> Optional[Client]:
         if not url or not key:
             return None
         return create_client(url, key)
-    except Exception as e:
-        logger.error(f"Supabase connection failed: {e}")
+    except:
         return None
 
 supabase = get_supabase()
@@ -192,12 +189,6 @@ supabase = get_supabase()
 # ============================================================================
 # CONSTANTES
 # ============================================================================
-class EventType(Enum):
-    CHECKIN = "checkin"
-    MEAL = "meal"
-    WEIGHT = "weight"
-    LEVEL_UP = "level_up"
-
 EMOTIONS = {
     "motivado": {"icon": "✨", "label": "Motivado", "color": "#22c55e"},
     "neutro": {"icon": "😐", "label": "Neutro", "color": "#94a3b8"},
@@ -214,19 +205,58 @@ MEAL_TYPES = {
 }
 
 LEVELS = [
-    {"name": "🌱 Iniciante", "min": 0, "desc": "Todo começo é válido."},
-    {"name": "🔥 Explorador", "min": 15, "desc": "Descobrindo seu ritmo."},
-    {"name": "💪 Persistente", "min": 35, "desc": "Construindo presença."},
-    {"name": "🔄 Reconstrutor", "min": 55, "desc": "Recair faz parte. Voltar é força."},
-    {"name": "⚓ Inabalável", "min": 75, "desc": "Sua consistência é sua âncora."},
-    {"name": "🌟 Guia", "min": 90, "desc": "Você inspira pelo exemplo."},
+    {"name": "🌱 Iniciante", "min_points": 0, "desc": "Todo começo é válido."},
+    {"name": "🔥 Explorador", "min_points": 500, "desc": "Descobrindo seu ritmo."},
+    {"name": "💪 Persistente", "min_points": 1500, "desc": "Construindo presença."},
+    {"name": "🔄 Reconstrutor", "min_points": 3000, "desc": "Recair faz parte. Voltar é força."},
+    {"name": "⚓ Inabalável", "min_points": 6000, "desc": "Sua consistência é sua âncora."},
+    {"name": "🌟 Guia", "min_points": 10000, "desc": "Você inspira pelo exemplo."},
 ]
 
 GOAL_TYPES = {
-    "emagrecer": {"label": "🎯 Emagrecer", "calorie_target": 1800, "weight_loss": 2.0},
-    "ganhar_massa": {"label": "💪 Ganhar massa muscular", "calorie_target": 2500, "weight_gain": 1.0},
-    "manter": {"label": "⚖️ Manter o peso", "calorie_target": 2100, "weight_maintain": 0},
+    "emagrecer": {"label": "🎯 Emagrecer", "activity_level": 1.55},
+    "ganhar_massa": {"label": "💪 Ganhar massa muscular", "activity_level": 1.725},
+    "manter": {"label": "⚖️ Manter o peso", "activity_level": 1.55},
 }
+
+ACTIVITY_LEVELS = {
+    "sedentario": 1.2,
+    "leve": 1.375,
+    "moderado": 1.55,
+    "intenso": 1.725,
+    "extremo": 1.9,
+}
+
+# ============================================================================
+# CÁLCULOS
+# ============================================================================
+def calcular_tmb(peso: float, altura: float, idade: int, sexo: str = "M") -> float:
+    altura_cm = altura * 100
+    if sexo == "M":
+        return (10 * peso) + (6.25 * altura_cm) - (5 * idade) + 5
+    else:
+        return (10 * peso) + (6.25 * altura_cm) - (5 * idade) - 161
+
+def calcular_meta_calorica(tmb: float, objetivo: str, nivel_atividade: str = "moderado") -> int:
+    fator_atividade = ACTIVITY_LEVELS.get(nivel_atividade, 1.55)
+    tdee = tmb * fator_atividade
+    
+    if objetivo == "emagrecer":
+        return int(tdee - 500)
+    elif objetivo == "ganhar_massa":
+        return int(tdee + 300)
+    else:
+        return int(tdee)
+
+def calcular_imc(peso: float, altura: float) -> float:
+    if altura <= 0:
+        return 0
+    return peso / (altura ** 2)
+
+def calcular_progresso_peso(peso_atual: float, peso_inicio: float, meta_mensal: float = 2.0) -> Dict:
+    perdido = max(0, peso_inicio - peso_atual)
+    percentual = min(100, (perdido / meta_mensal) * 100) if meta_mensal > 0 else 0
+    return {"perdido": perdido, "percentual": percentual, "restante": max(0, meta_mensal - perdido)}
 
 # ============================================================================
 # DATACLASSES
@@ -237,7 +267,7 @@ class MealEntry:
     description: str
     calories: int
     photo_url: Optional[str] = None
-    timestamp: str = field(default_factory=lambda: datetime.now(DEFAULT_TZ).isoformat())
+    timestamp: str = field(default_factory=lambda: datetime.now().isoformat())
     
     def to_dict(self) -> Dict:
         return {"type": self.type, "description": self.description, "calories": self.calories, 
@@ -246,283 +276,275 @@ class MealEntry:
 @dataclass
 class WeightEntry:
     weight: float
-    timestamp: str = field(default_factory=lambda: datetime.now(DEFAULT_TZ).isoformat())
-    
-    def to_dict(self) -> Dict:
-        return {"weight": self.weight, "timestamp": self.timestamp}
+    timestamp: str = field(default_factory=lambda: datetime.now().isoformat())
 
 @dataclass
 class BehavioralState:
-    user_id: str = ""
-    goal: str = "emagrecer"
+    user_id: str = "demo-user"
+    nome: str = "Usuário"
+    sexo: str = "M"
+    idade: int = 30
+    altura: float = 1.70
+    objetivo: str = "emagrecer"
+    nivel_atividade: str = "moderado"
+    
     current_weight: float = 80.0
     target_weight: float = 70.0
-    height: float = 1.70
-    age: int = 30
+    peso_inicio_mes: float = 80.0
+    meta_mensal_kg: float = 2.0
     
-    consistency_score: float = 0.0
+    # Pontuação e níveis
+    total_points: int = 0
+    current_level: int = 0
+    
+    # Consistência
     current_streak: int = 0
     longest_streak: int = 0
     total_checkins: int = 0
     last_checkin: Optional[str] = None
-    current_level: int = 0
     
+    # Registros
     meals_today: List[Dict] = field(default_factory=list)
     weight_history: List[Dict] = field(default_factory=list)
     emotion_history: List[Dict] = field(default_factory=list)
+    points_history: List[Dict] = field(default_factory=list)
+    
+    # Para análises
+    is_premium: bool = False
     
     def get_level_info(self) -> Dict:
         for i, level in enumerate(reversed(LEVELS)):
-            if self.consistency_score >= level["min"]:
+            if self.total_points >= level["min_points"]:
                 return level
         return LEVELS[0]
     
+    def get_next_level_info(self) -> Dict:
+        for level in LEVELS:
+            if self.total_points < level["min_points"]:
+                return level
+        return LEVELS[-1]
+    
     def get_progress_to_next_level(self) -> float:
-        current = self.consistency_score
-        for i, level in enumerate(LEVELS):
-            if current < level["min"]:
-                prev_min = LEVELS[i-1]["min"] if i > 0 else 0
-                return (current - prev_min) / (level["min"] - prev_min) * 100 if level["min"] > prev_min else 0
-        return 100
-    
-    def get_bmi(self) -> float:
-        if self.height <= 0:
+        current = self.total_points
+        next_level = self.get_next_level_info()
+        prev_min = LEVELS[LEVELS.index(next_level) - 1]["min_points"] if LEVELS.index(next_level) > 0 else 0
+        if next_level["min_points"] <= prev_min:
             return 0
-        return self.current_weight / (self.height ** 2)
-    
-    def get_bmi_category(self) -> str:
-        bmi = self.get_bmi()
-        if bmi < 18.5: return "Abaixo do peso"
-        if bmi < 25: return "Peso normal"
-        if bmi < 30: return "Sobrepeso"
-        return "Obesidade"
+        return min(100, (current - prev_min) / (next_level["min_points"] - prev_min) * 100)
     
     def get_daily_calorie_target(self) -> int:
-        return GOAL_TYPES.get(self.goal, GOAL_TYPES["emagrecer"])["calorie_target"]
+        tmb = calcular_tmb(self.current_weight, self.altura, self.idade, self.sexo)
+        return calcular_meta_calorica(tmb, self.objetivo, self.nivel_atividade)
+    
+    def get_tmb(self) -> float:
+        return calcular_tmb(self.current_weight, self.altura, self.idade, self.sexo)
+    
+    def get_tdee(self) -> float:
+        tmb = self.get_tmb()
+        return tmb * ACTIVITY_LEVELS.get(self.nivel_atividade, 1.55)
 
 # ============================================================================
-# REPOSITORY
+# SISTEMA DE PONTOS
 # ============================================================================
-class StateRepository:
-    def __init__(self, client: Optional[Client]):
-        self.client = client
+class PointsSystem:
+    REWARDS = {
+        "checkin": 10,
+        "meal": 15,
+        "meal_with_photo": 5,
+        "weight_log": 10,
+        "calorie_goal_achieved": 30,
+        "streak_7_days": 100,
+        "streak_30_days": 500,
+    }
     
-    @st.cache_data(ttl=120)
-    def load_state(_self, user_id: str) -> Optional[BehavioralState]:
-        if user_id == "demo-user" or not _self.client:
-            return None
-        try:
-            result = _self.client.table("behavioral_state").select("*").eq("user_id", user_id).execute()
-            if result.data:
-                data = result.data[0]
-                return BehavioralState(
-                    user_id=data["user_id"],
-                    goal=data.get("goal", "emagrecer"),
-                    current_weight=data.get("current_weight", 80.0),
-                    target_weight=data.get("target_weight", 70.0),
-                    height=data.get("height", 1.70),
-                    age=data.get("age", 30),
-                    consistency_score=data.get("consistency_score", 0),
-                    current_streak=data.get("current_streak", 0),
-                    longest_streak=data.get("longest_streak", 0),
-                    total_checkins=data.get("total_checkins", 0),
-                    last_checkin=data.get("last_checkin"),
-                    current_level=data.get("current_level", 0),
-                    meals_today=data.get("meals_today", []),
-                    weight_history=data.get("weight_history", []),
-                    emotion_history=data.get("emotion_history", []),
-                )
-            return None
-        except Exception as e:
-            logger.error(f"load_state error: {e}")
-            return None
-    
-    def save_state(self, state: BehavioralState) -> bool:
-        if state.user_id == "demo-user" or not self.client:
-            return False
-        try:
-            self.client.table("behavioral_state").upsert({
-                "user_id": state.user_id,
-                "goal": state.goal,
-                "current_weight": state.current_weight,
-                "target_weight": state.target_weight,
-                "height": state.height,
-                "age": state.age,
-                "consistency_score": state.consistency_score,
-                "current_streak": state.current_streak,
-                "longest_streak": state.longest_streak,
-                "total_checkins": state.total_checkins,
-                "last_checkin": state.last_checkin,
-                "current_level": state.current_level,
-                "meals_today": state.meals_today,
-                "weight_history": state.weight_history,
-                "emotion_history": state.emotion_history,
-                "updated_at": datetime.now(DEFAULT_TZ).isoformat(),
-            }, on_conflict="user_id").execute()
-            self.load_state.clear(state.user_id)
-            return True
-        except Exception as e:
-            logger.error(f"save_state error: {e}")
-            return False
-    
-    def log_event(self, user_id: str, event_type: str, metadata: Dict) -> bool:
-        if user_id == "demo-user" or not self.client:
-            return False
-        try:
-            self.client.table("behavioral_events").insert({
-                "user_id": user_id,
-                "event_type": event_type,
-                "metadata": json.dumps(metadata),
-                "created_at": datetime.now(DEFAULT_TZ).isoformat(),
-            }).execute()
-            return True
-        except Exception as e:
-            logger.error(f"log_event error: {e}")
-            return False
-
-repository = StateRepository(supabase)
+    @classmethod
+    def calculate_daily_points(cls, has_checkin: bool, meals_count: int, meals_with_photo: int, 
+                                has_weight: bool, calorie_goal_achieved: bool, current_streak: int) -> int:
+        points = 0
+        if has_checkin:
+            points += cls.REWARDS["checkin"]
+        points += meals_count * cls.REWARDS["meal"]
+        points += meals_with_photo * cls.REWARDS["meal_with_photo"]
+        if has_weight:
+            points += cls.REWARDS["weight_log"]
+        if calorie_goal_achieved:
+            points += cls.REWARDS["calorie_goal_achieved"]
+        if current_streak >= 7 and current_streak % 7 == 0:
+            points += cls.REWARDS["streak_7_days"]
+        if current_streak >= 30 and current_streak % 30 == 0:
+            points += cls.REWARDS["streak_30_days"]
+        return points
 
 # ============================================================================
-# BEHAVIORAL ENGINE
+# PROCESSAMENTO
 # ============================================================================
-class BehavioralEngine:
-    @staticmethod
-    def calculate_consistency(events: List[Dict]) -> float:
-        """Score baseado em presença e ações"""
-        if not events:
-            return 0.0
-        now = datetime.now(DEFAULT_TZ)
-        score = 0.0
-        for event in events[-60:]:
-            weight = {"checkin": 2, "meal": 1, "weight": 1}.get(event.get("event_type"), 1)
-            try:
-                ts = datetime.fromisoformat(event.get("created_at", "").replace('Z', '+00:00'))
-                days_ago = (now - ts).days
-                decay = max(0.3, 1 - (days_ago * 0.02))
-                score += weight * decay
-            except:
-                pass
-        return round(min(100, score / 2.5), 1)
+def process_checkin(state: BehavioralState, emotion: str) -> Tuple[BehavioralState, int]:
+    now_utc = datetime.now().isoformat()
     
-    @staticmethod
-    def calculate_streak(last_checkin: Optional[str]) -> Tuple[int, bool]:
-        if not last_checkin:
-            return 1, False
+    # Calcular streak
+    if state.last_checkin:
         try:
-            last = datetime.fromisoformat(last_checkin.replace('Z', '+00:00'))
-            now = datetime.now(DEFAULT_TZ)
-            delta = (now.date() - last.date()).days
-            if delta == 0:
-                return 0, False
-            elif delta == 1:
-                return 1, False
+            last = datetime.fromisoformat(state.last_checkin.replace('Z', '+00:00'))
+            delta = (datetime.now() - last).days
+            if delta == 1:
+                state.current_streak += 1
+            elif delta > 1:
+                state.current_streak = 1
             else:
-                return 1, True
+                state.current_streak = state.current_streak
         except:
-            return 1, False
+            state.current_streak = 1
+    else:
+        state.current_streak = 1
     
-    @staticmethod
-    def calculate_level(consistency: float) -> int:
-        for i, level in enumerate(LEVELS):
-            if consistency < level["min"]:
-                return max(0, i - 1)
-        return len(LEVELS) - 1
-
-# ============================================================================
-# NARRATIVE ENGINE
-# ============================================================================
-class NarrativeEngine:
-    @staticmethod
-    def get_greeting(state: BehavioralState) -> str:
-        hour = datetime.now(DEFAULT_TZ).hour
-        base = "Bom dia" if hour < 12 else "Boa tarde" if hour < 18 else "Boa noite"
-        level_info = state.get_level_info()
-        return f"{base}. Você está no nível {level_info['name']} — {level_info['desc']}"
-    
-    @staticmethod
-    def get_message(state: BehavioralState) -> str:
-        if state.current_streak >= 7:
-            return f"🔥 {state.current_streak} dias seguidos! Isso é consistência real."
-        if state.current_streak >= 3:
-            return f"📈 Você já está há {state.current_streak} dias presente. Continue!"
-        if state.consistency_score < 30:
-            return "🌱 Todo recomeço é uma semente. Hoje é um novo começo."
-        return "💪 Sua presença hoje importa mais do que qualquer número na balança."
-
-# ============================================================================
-# PROCESSING FUNCTIONS
-# ============================================================================
-def process_checkin(state: BehavioralState, emotion: str) -> BehavioralState:
-    now_utc = datetime.now(DEFAULT_TZ).isoformat()
-    new_streak, was_broken = BehavioralEngine.calculate_streak(state.last_checkin)
-    
-    state.current_streak = new_streak
-    state.longest_streak = max(state.longest_streak, new_streak)
+    state.longest_streak = max(state.longest_streak, state.current_streak)
     state.total_checkins += 1
     state.last_checkin = now_utc
     
     state.emotion_history.append({"emotion": emotion, "timestamp": now_utc})
     state.emotion_history = state.emotion_history[-50:]
     
-    # Atualizar consistência (precisa de eventos)
-    events = [{"event_type": "checkin", "created_at": now_utc}]
-    state.consistency_score = BehavioralEngine.calculate_consistency(events)
-    state.current_level = BehavioralEngine.calculate_level(state.consistency_score)
+    # Calcular pontos do dia (parcial)
+    today = datetime.now().date().isoformat()
+    today_meals = [m for m in state.meals_today if m.get("date") == today]
+    meals_with_photo = sum(1 for m in today_meals if m.get("photo_url"))
+    total_calories = sum(m.get("calories", 0) for m in today_meals)
+    calorie_goal = state.get_daily_calorie_target()
     
-    repository.save_state(state)
-    repository.log_event(state.user_id, "checkin", {"emotion": emotion, "streak": new_streak})
-    return state
+    daily_points = PointsSystem.calculate_daily_points(
+        has_checkin=True,
+        meals_count=len(today_meals),
+        meals_with_photo=meals_with_photo,
+        has_weight=False,
+        calorie_goal_achieved=total_calories <= calorie_goal,
+        current_streak=state.current_streak
+    )
+    
+    state.total_points += daily_points
+    state.points_history.append({"points": daily_points, "date": now_utc, "source": "checkin"})
+    
+    # Atualizar nível
+    new_level = 0
+    for i, level in enumerate(LEVELS):
+        if state.total_points >= level["min_points"]:
+            new_level = i
+    state.current_level = new_level
+    
+    return state, daily_points
 
-def process_meal(state: BehavioralState, meal_type: str, description: str, calories: int, photo_url: str = None) -> BehavioralState:
-    now_utc = datetime.now(DEFAULT_TZ).isoformat()
-    today = datetime.now(DEFAULT_TZ).date().isoformat()
+def process_meal(state: BehavioralState, meal_type: str, description: str, calories: int, photo_url: str = None) -> Tuple[BehavioralState, int]:
+    now_utc = datetime.now().isoformat()
+    today = datetime.now().date().isoformat()
     
-    # Limpar refeições de dias anteriores
+    # Limpar refeições antigas
     state.meals_today = [m for m in state.meals_today if m.get("date") == today]
     
+    has_photo = photo_url is not None
     state.meals_today.append({
         "date": today,
         "type": meal_type,
         "description": description,
         "calories": calories,
         "photo_url": photo_url,
-        "time": datetime.now(DEFAULT_TZ).strftime("%H:%M"),
+        "time": datetime.now().strftime("%H:%M"),
+        "has_photo": has_photo,
     })
     
-    repository.log_event(state.user_id, "meal", {"type": meal_type, "calories": calories})
-    repository.save_state(state)
-    return state
+    # Calcular pontos do dia (parcial)
+    today_meals = state.meals_today
+    meals_with_photo = sum(1 for m in today_meals if m.get("photo_url"))
+    total_calories = sum(m.get("calories", 0) for m in today_meals)
+    calorie_goal = state.get_daily_calorie_target()
+    has_checkin_today = state.last_checkin and datetime.fromisoformat(state.last_checkin.replace('Z', '+00:00')).date() == datetime.now().date()
+    
+    daily_points = PointsSystem.calculate_daily_points(
+        has_checkin=has_checkin_today,
+        meals_count=len(today_meals),
+        meals_with_photo=meals_with_photo,
+        has_weight=False,
+        calorie_goal_achieved=total_calories <= calorie_goal,
+        current_streak=state.current_streak
+    )
+    
+    # Atualizar pontos totais (substituindo os anteriores do dia)
+    # Remover pontos antigos do dia
+    today_start = datetime.now().replace(hour=0, minute=0, second=0, microsecond=0).isoformat()
+    state.points_history = [p for p in state.points_history if p.get("date", "") < today_start]
+    state.points_history.append({"points": daily_points, "date": now_utc, "source": "meals"})
+    
+    # Recalcular total
+    state.total_points = sum(p["points"] for p in state.points_history)
+    
+    # Atualizar nível
+    new_level = 0
+    for i, level in enumerate(LEVELS):
+        if state.total_points >= level["min_points"]:
+            new_level = i
+    state.current_level = new_level
+    
+    return state, daily_points
 
 def process_weight(state: BehavioralState, weight: float) -> BehavioralState:
-    now_utc = datetime.now(DEFAULT_TZ).isoformat()
+    now_utc = datetime.now().isoformat()
     state.current_weight = weight
     state.weight_history.append({"weight": weight, "timestamp": now_utc})
     state.weight_history = state.weight_history[-90:]
     
-    repository.log_event(state.user_id, "weight", {"weight": weight})
-    repository.save_state(state)
+    # Verificar se bateu meta mensal
+    progress = calcular_progresso_peso(weight, state.peso_inicio_mes, state.meta_mensal_kg)
+    if progress["percentual"] >= 100 and not state.is_premium:
+        # Sugerir upgrade para premium
+        pass
+    
     return state
+
+# ============================================================================
+# REPOSITORY (mock)
+# ============================================================================
+class StateRepository:
+    def __init__(self):
+        self._state = None
+    
+    def load_state(self, user_id: str) -> Optional[BehavioralState]:
+        if self._state:
+            return self._state
+        return None
+    
+    def save_state(self, state: BehavioralState) -> bool:
+        self._state = state
+        return True
+
+repository = StateRepository()
 
 # ============================================================================
 # UI COMPONENTS
 # ============================================================================
 def render_narrative(state: BehavioralState):
+    level_info = state.get_level_info()
+    next_level = state.get_next_level_info()
+    
     st.markdown(f"""
     <div class="narrative-box">
         <div style="display: flex; justify-content: space-between; align-items: center;">
             <div>
-                <div style="font-size: 0.8rem; color: #92400e;">{NarrativeEngine.get_greeting(state)}</div>
-                <div style="font-weight: 500; margin-top: 4px;">{NarrativeEngine.get_message(state)}</div>
+                <div style="font-size: 0.8rem; color: #92400e;">Bom dia! Você está evoluindo.</div>
+                <div style="font-weight: 500; margin-top: 4px;">{level_info['desc']}</div>
             </div>
-            <div class="level-badge">{state.get_level_info()['name']}</div>
+            <div class="level-badge">{level_info['name']}</div>
+        </div>
+        <div style="margin-top: 12px;">
+            <div class="points-badge">⭐ {state.total_points} pontos</div>
         </div>
     </div>
     """, unsafe_allow_html=True)
 
 def render_metrics(state: BehavioralState):
-    today_meals = [m for m in state.meals_today if m.get("date") == datetime.now(DEFAULT_TZ).date().isoformat()]
+    today = datetime.now().date().isoformat()
+    today_meals = [m for m in state.meals_today if m.get("date") == today]
     total_calories = sum(m.get("calories", 0) for m in today_meals)
     calorie_target = state.get_daily_calorie_target()
+    tmb = state.get_tmb()
+    tdee = state.get_tdee()
     
     st.markdown(f"""
     <div class="metric-grid">
@@ -531,12 +553,12 @@ def render_metrics(state: BehavioralState):
             <div class="metric-label">🔥 Sequência</div>
         </div>
         <div class="metric-card">
-            <div class="metric-value">{state.consistency_score:.0f}%</div>
-            <div class="metric-label">🎯 Consistência</div>
+            <div class="metric-value">{len(today_meals)}</div>
+            <div class="metric-label">🍽️ Refeições</div>
         </div>
         <div class="metric-card">
             <div class="metric-value">{total_calories}</div>
-            <div class="metric-label">🍽️ Calorias</div>
+            <div class="metric-label">🔥 Calorias</div>
         </div>
     </div>
     """, unsafe_allow_html=True)
@@ -544,27 +566,35 @@ def render_metrics(state: BehavioralState):
     # Barra de calorias
     percent = min(100, (total_calories / calorie_target) * 100)
     st.markdown(f"""
-    <div style="font-size: 0.7rem; color: #64748b;">Meta diária: {calorie_target} kcal</div>
+    <div style="font-size: 0.7rem; color: #64748b;">Meta diária: {calorie_target} kcal | TMB: {tmb:.0f} | TDEE: {tdee:.0f}</div>
     <div class="progress-bar"><div class="progress-fill" style="width: {percent}%;"></div></div>
     """, unsafe_allow_html=True)
     
-    # IMC (referência)
-    bmi = state.get_bmi()
-    st.caption(f"📊 IMC: {bmi:.1f} • {state.get_bmi_category()} (referência)")
+    # Progresso para próximo nível
+    next_level = state.get_next_level_info()
+    progress = state.get_progress_to_next_level()
+    st.markdown(f"""
+    <div style="margin-top: 16px;">
+        <div style="font-size: 0.7rem; color: #64748b;">Próximo nível: {next_level['name']}</div>
+        <div class="progress-bar"><div class="progress-fill" style="width: {progress}%; background: linear-gradient(90deg, #8b5cf6, #6d28d9);"></div></div>
+        <div style="font-size: 0.7rem; color: #64748b; text-align: right;">{state.total_points} / {next_level['min_points']} pontos</div>
+    </div>
+    """, unsafe_allow_html=True)
 
-def render_meals(state: BehavioralState):
-    st.markdown("### 🍽️ Refeições de hoje")
-    
-    today = datetime.now(DEFAULT_TZ).date().isoformat()
+def render_meals(state: BehavioralState) -> Tuple[BehavioralState, bool]:
+    today = datetime.now().date().isoformat()
     today_meals = [m for m in state.meals_today if m.get("date") == today]
+    
+    st.markdown("### 🍽️ Refeições de hoje")
     
     if today_meals:
         for meal in today_meals:
             meal_name = MEAL_TYPES.get(meal.get("type"), {}).get("name", meal.get("type"))
+            photo_badge = " 📸" if meal.get("photo_url") else ""
             st.markdown(f"""
             <div class="meal-card">
                 <div class="meal-header">
-                    <span class="meal-type">{meal_name}</span>
+                    <span class="meal-type">{meal_name}{photo_badge}</span>
                     <span class="meal-time">{meal.get('time', '--:--')}</span>
                 </div>
                 <div class="meal-desc">{meal.get('description', '')}</div>
@@ -583,20 +613,26 @@ def render_meals(state: BehavioralState):
             calories = st.number_input("Calorias (kcal)", min_value=0, max_value=1500, value=MEAL_TYPES[meal_type]["cal_hint"], step=50)
         
         description = st.text_area("O que você comeu?", placeholder="Ex: Arroz integral, frango grelhado, salada", height=68)
-        photo = st.camera_input("Tirar foto do prato (opcional)", help="Fotografar ajuda na consciência alimentar")
+        photo = st.camera_input("Tirar foto do prato (opcional)", help="Fotografar ajuda na consciência alimentar + ganha +5 pontos!")
         
         if st.button("✅ Salvar refeição", use_container_width=True):
             if description:
                 photo_url = None
+                has_photo = False
                 if photo:
-                    photo_url = "temp_photo_url"  # Implementar storage depois
-                state = process_meal(state, meal_type, description, calories, photo_url)
-                st.success(f"🍽️ Refeição registrada! +{calories} kcal")
-                st.rerun()
+                    photo_url = "temp_photo_url"
+                    has_photo = True
+                state, points_earned = process_meal(state, meal_type, description, calories, photo_url)
+                if has_photo:
+                    st.success(f"🍽️ Refeição registrada! +{points_earned} pontos (📸 bônus por foto!)")
+                else:
+                    st.success(f"🍽️ Refeição registrada! +{points_earned} pontos")
+                return state, True
             else:
                 st.warning("Descreva o que você comeu")
+    return state, False
 
-def render_weight_section(state: BehavioralState):
+def render_weight_section(state: BehavioralState) -> Tuple[BehavioralState, bool]:
     st.markdown("### ⚖️ Acompanhamento de peso")
     
     col1, col2 = st.columns(2)
@@ -606,14 +642,22 @@ def render_weight_section(state: BehavioralState):
         target_weight = st.number_input("Peso desejado (kg)", min_value=30.0, max_value=250.0, value=state.target_weight, step=0.5)
     
     if new_weight != state.current_weight:
-        if st.button("💾 Registrar peso", use_container_width=True):
+        if st.button("💾 Registrar peso (+10 pontos)", use_container_width=True):
             state = process_weight(state, new_weight)
-            st.success(f"⚖️ Peso registrado: {new_weight:.1f} kg")
-            st.rerun()
+            # Adicionar pontos por registrar peso
+            daily_points = PointsSystem.calculate_daily_points(
+                has_checkin=False, meals_count=0, meals_with_photo=0,
+                has_weight=True, calorie_goal_achieved=False, current_streak=state.current_streak
+            )
+            state.total_points += daily_points
+            state.points_history.append({"points": daily_points, "date": datetime.now().isoformat(), "source": "weight"})
+            st.success(f"⚖️ Peso registrado! +{daily_points} pontos")
+            return state, True
     
     if target_weight != state.target_weight:
         state.target_weight = target_weight
-        repository.save_state(state)
+        st.success("Meta de peso atualizada!")
+        return state, True
     
     # Gráfico de evolução
     if len(state.weight_history) >= 2:
@@ -623,99 +667,183 @@ def render_weight_section(state: BehavioralState):
         fig.update_layout(height=250, margin=dict(l=0, r=0, t=40, b=0))
         fig.update_traces(line=dict(color="#f59e0b", width=2))
         st.plotly_chart(fig, use_container_width=True, config={"displayModeBar": False})
+    
+    return state, False
+
+def render_checkin_section(state: BehavioralState) -> Tuple[BehavioralState, bool]:
+    st.markdown("---")
+    st.markdown("### 😊 Check-in diário")
+    
+    emotion_cols = st.columns(3)
+    selected = None
+    for idx, (key, data) in enumerate(EMOTIONS.items()):
+        with emotion_cols[idx % 3]:
+            if st.button(f"{data['icon']} {data['label']}", key=f"emotion_{key}", use_container_width=True):
+                selected = key
+    
+    if selected:
+        state, points_earned = process_checkin(state, selected)
+        st.success(f"✅ Presença registrada! Você está se sentindo {EMOTIONS[selected]['label']}. +{points_earned} pontos")
+        return state, True
+    
+    return state, False
 
 def render_history(state: BehavioralState):
-    st.markdown("### 📊 Sua jornada")
+    st.markdown("### 📊 Análises e histórico")
     
-    # Gráfico de emoções
-    if state.emotion_history:
-        df = pd.DataFrame(state.emotion_history[-30:])
-        df["date"] = pd.to_datetime(df["timestamp"]).dt.date
-        emotion_counts = df.groupby("emotion").size()
-        if not emotion_counts.empty:
-            fig = px.bar(x=emotion_counts.index, y=emotion_counts.values, labels={"x": "Emoção", "y": "Frequência"}, color=emotion_counts.index)
-            fig.update_layout(height=200, margin=dict(l=0, r=0, t=20, b=0))
+    tab1, tab2, tab3, tab4 = st.tabs(["📈 Evolução", "😊 Emoções", "⭐ Pontos", "🔬 Correlações"])
+    
+    with tab1:
+        if len(state.weight_history) >= 2:
+            df = pd.DataFrame(state.weight_history[-30:])
+            df["timestamp"] = pd.to_datetime(df["timestamp"])
+            fig = px.line(df, x="timestamp", y="weight", title="Evolução do peso", markers=True)
+            fig.update_layout(height=300, margin=dict(l=0, r=0, t=40, b=0))
+            st.plotly_chart(fig, use_container_width=True)
+        else:
+            st.info("Registre peso para ver sua evolução")
+    
+    with tab2:
+        if state.emotion_history:
+            df = pd.DataFrame(state.emotion_history[-30:])
+            df["date"] = pd.to_datetime(df["timestamp"]).dt.date
+            emotion_counts = df.groupby("emotion").size()
+            if not emotion_counts.empty:
+                fig = px.bar(x=emotion_counts.index, y=emotion_counts.values, 
+                            labels={"x": "Emoção", "y": "Frequência"}, color=emotion_counts.index)
+                fig.update_layout(height=250, margin=dict(l=0, r=0, t=20, b=0))
+                st.plotly_chart(fig, use_container_width=True)
+            
+            # Correlação humor × refeição
+            st.markdown("#### 🔍 Correlação humor × alimentação")
+            st.caption("Em breve: análise de como seu humor afeta suas escolhas alimentares")
+        else:
+            st.info("Registre seu estado emocional para ver análises")
+    
+    with tab3:
+        col1, col2, col3 = st.columns(3)
+        col1.metric("Total check-ins", state.total_checkins)
+        col2.metric("Maior sequência", f"{state.longest_streak} dias")
+        col3.metric("Pontos totais", state.total_points)
+        
+        if state.points_history:
+            df_points = pd.DataFrame(state.points_history[-30:])
+            df_points["date"] = pd.to_datetime(df_points["date"]).dt.date
+            points_by_day = df_points.groupby("date")["points"].sum().reset_index()
+            fig = px.bar(points_by_day, x="date", y="points", title="Pontos por dia")
+            fig.update_layout(height=250, margin=dict(l=0, r=0, t=40, b=0))
             st.plotly_chart(fig, use_container_width=True)
     
-    col1, col2, col3 = st.columns(3)
-    col1.metric("Total check-ins", state.total_checkins)
-    col2.metric("Maior sequência", f"{state.longest_streak} dias")
-    col3.metric("Refeições registradas", len([m for m in state.meals_today]))
-    
-    # Progresso para próximo nível
-    progress = state.get_progress_to_next_level()
-    st.markdown(f"### 📈 Progresso para próximo nível")
-    st.progress(progress / 100)
-    st.caption(f"{state.consistency_score:.0f} pontos de consistência")
+    with tab4:
+        st.markdown("#### 📊 Análise comportamental")
+        
+        # Correlação humor × horário
+        if state.emotion_history:
+            df_emo = pd.DataFrame(state.emotion_history)
+            df_emo["hour"] = pd.to_datetime(df_emo["timestamp"]).dt.hour
+            emo_by_hour = df_emo.groupby(["hour", "emotion"]).size().unstack(fill_value=0)
+            if not emo_by_hour.empty:
+                fig = px.imshow(emo_by_hour.T, labels=dict(x="Hora", y="Emoção", color="Frequência"),
+                                title="Mapa de calor: Emoções por horário")
+                fig.update_layout(height=300)
+                st.plotly_chart(fig, use_container_width=True)
+        
+        # Correlação calorias × humor (se tiver dados)
+        st.caption("💡 Análises avançadas disponíveis no plano Premium")
 
-def render_profile(state: BehavioralState):
+def render_profile(state: BehavioralState) -> Tuple[BehavioralState, bool]:
     st.markdown("### 👤 Meu perfil")
     
     with st.form("profile_form"):
         col1, col2 = st.columns(2)
         with col1:
-            age = st.number_input("Idade", 18, 100, state.age)
-            height = st.number_input("Altura (m)", 1.40, 2.20, state.height, 0.01)
+            nome = st.text_input("Nome", state.nome)
+            idade = st.number_input("Idade", 18, 100, state.idade)
+            sexo = st.selectbox("Sexo", ["M", "F"], index=0 if state.sexo == "M" else 1)
         with col2:
-            goal = st.selectbox("Objetivo", options=list(GOAL_TYPES.keys()), format_func=lambda x: GOAL_TYPES[x]["label"])
+            altura = st.number_input("Altura (m)", 1.40, 2.20, state.altura, 0.01)
+            objetivo = st.selectbox("Objetivo", options=list(GOAL_TYPES.keys()), format_func=lambda x: GOAL_TYPES[x]["label"])
+            atividade = st.selectbox("Nível de atividade", options=list(ACTIVITY_LEVELS.keys()), 
+                                     format_func=lambda x: x.capitalize())
         
         if st.form_submit_button("Salvar perfil"):
-            state.age = age
-            state.height = height
-            state.goal = goal
-            repository.save_state(state)
+            state.nome = nome
+            state.idade = idade
+            state.sexo = sexo
+            state.altura = altura
+            state.objetivo = objetivo
+            state.nivel_atividade = atividade
             st.success("Perfil atualizado!")
-            st.rerun()
+            return state, True
     
-    st.markdown(f"""
-    <div class="card" style="margin-top: 16px;">
-        <div style="font-size: 0.8rem; color: #64748b;">Sobre você</div>
-        <div><strong>Idade:</strong> {state.age} anos</div>
-        <div><strong>Altura:</strong> {state.height:.2f}m</div>
-        <div><strong>Objetivo:</strong> {GOAL_TYPES.get(state.goal, {}).get('label', 'Emagrecer')}</div>
-        <div><strong>IMC:</strong> {state.get_bmi():.1f} ({state.get_bmi_category()})</div>
-    </div>
-    """, unsafe_allow_html=True)
+    # Card de upgrade para premium
+    if not state.is_premium:
+        st.markdown("---")
+        st.markdown("### 💎 Upgrade para Premium")
+        st.markdown("""
+        - 📊 Análises avançadas (correlações completas)
+        - 📥 Exportar dados (CSV/PDF)
+        - 📈 Histórico ilimitado
+        - 🏆 Desafios exclusivos
+        """)
+        if st.button("🔥 Assinar Premium (R$ 19,90/mês)", use_container_width=True):
+            st.success("🎉 Premium ativado! (modo demonstração)")
+            state.is_premium = True
+            return state, True
+    
+    return state, False
+
+def render_premium_banner(state: BehavioralState):
+    if not state.is_premium:
+        st.info("💎 **Desbloqueie análises avançadas e exportação de dados com o plano Premium!**")
+        if st.button("Ver planos", use_container_width=True):
+            st.session_state["show_premium"] = True
 
 # ============================================================================
 # MAIN
 # ============================================================================
 def main():
+    # Inicializar estado
     user_id = "demo-user"
-    state = repository.load_state(user_id) or BehavioralState(user_id=user_id)
+    state = repository.load_state(user_id)
+    if not state:
+        state = BehavioralState(user_id=user_id)
     
+    # Renderizar UI
     render_narrative(state)
     render_metrics(state)
     
-    tabs = st.tabs(["🍽️ Refeições", "⚖️ Peso", "📊 Histórico", "👤 Perfil"])
+    tabs = st.tabs(["🍽️ Refeições", "⚖️ Peso", "📊 Análises", "👤 Perfil"])
+    
+    needs_refresh = False
     
     with tabs[0]:
-        render_meals(state)
+        state, refreshed = render_meals(state)
+        if refreshed: needs_refresh = True
     
     with tabs[1]:
-        render_weight_section(state)
+        state, refreshed = render_weight_section(state)
+        if refreshed: needs_refresh = True
     
     with tabs[2]:
         render_history(state)
+        render_premium_banner(state)
     
     with tabs[3]:
-        render_profile(state)
+        state, refreshed = render_profile(state)
+        if refreshed: needs_refresh = True
     
     # Check-in rápido
-    st.markdown("---")
-    with st.expander("😊 Como você está se sentindo hoje?"):
-        emotion_cols = st.columns(3)
-        selected = None
-        for idx, (key, data) in enumerate(EMOTIONS.items()):
-            with emotion_cols[idx % 3]:
-                if st.button(f"{data['icon']} {data['label']}", key=f"emotion_{key}", use_container_width=True):
-                    selected = key
-        if selected:
-            state = process_checkin(state, selected)
-            st.success(f"✅ Presença registrada! Você está se sentindo {EMOTIONS[selected]['label']}.")
-            st.rerun()
+    state, refreshed = render_checkin_section(state)
+    if refreshed: needs_refresh = True
     
-    st.caption(f"EmagreSim • Nível {state.get_level_info()['name']} • {state.current_streak} dias de sequência")
+    # Salvar estado
+    repository.save_state(state)
+    
+    if needs_refresh:
+        st.rerun()
+    
+    st.caption(f"EmagreSim • Nível {state.get_level_info()['name']} • {state.total_points} pontos • {state.current_streak} dias de sequência")
 
 if __name__ == "__main__":
     main()
