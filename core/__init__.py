@@ -1,15 +1,6 @@
-"""
-Core module - Lógica principal do EmagreSim
-"""
-from .database import Database
+from .database import SupabaseDB
 from .gamification import GamificationSystem
 from .psychology import PsychologyEngine
-from .services import NutritionService, UserService
+from .services import UserService
 
-__all__ = [
-    'Database',
-    'GamificationSystem', 
-    'PsychologyEngine',
-    'NutritionService',
-    'UserService'
-]
+__all__ = ["SupabaseDB", "GamificationSystem", "PsychologyEngine", "UserService"]
