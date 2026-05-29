@@ -4,7 +4,7 @@ from core.services import UserService
 from core.psychology import PsychologyEngine
 from views import render_dashboard, render_refeicoes, render_historico, render_perfil
 
-# 1. Configuração Global
+# Configuração Global
 st.set_page_config(
     page_title="EmagreSim", 
     page_icon="🍽️", 
@@ -39,10 +39,20 @@ st.markdown("""
     h1 { color: white; text-align: center; text-shadow: 2px 2px 4px rgba(0,0,0,0.2); }
     h2, h3 { color: #2d3748; font-weight: 600; }
     .stProgress > div > div { background: linear-gradient(90deg, #11998e 0%, #38ef7d 100%); border-radius: 10px; }
+    
+    /* Bloco único centralizado */
+    .login-container {
+        background: white;
+        padding: 2.5rem;
+        border-radius: 20px;
+        box-shadow: 0 10px 40px rgba(0,0,0,0.2);
+        max-width: 500px;
+        margin: 0 auto;
+    }
 </style>
 """, unsafe_allow_html=True)
 
-# 2. Inicialização de Serviços
+# Inicialização de Serviços
 @st.cache_resource
 def init_services():
     db = SupabaseDB()
@@ -50,23 +60,31 @@ def init_services():
 
 db, user_service, psychology = init_services()
 
-# 3. Estado da Sessão
+# Estado da Sessão
 if "user" not in st.session_state: st.session_state.user = None
-if "page" not in st.session_state: st.session_state.page = " Dashboard"
+if "page" not in st.session_state: st.session_state.page = "📊 Painel"
 
-# 4. Tela de Autenticação
+# TELA DE AUTENTICAÇÃO (BLOCO ÚNICO)
 if not st.session_state.user:
-    st.markdown("<br><br>", unsafe_allow_html=True)
+    st.markdown("<br>", unsafe_allow_html=True)
     st.title("🍽️ EmagreSim")
     st.subheader("Sua jornada fitness começa aqui")
     st.markdown("---")
 
+    # Bloco único centralizado com Tabs
     col1, col2, col3 = st.columns([1, 2, 1])
     with col2:
-        tab1, tab2 = st.tabs(["🔑 Entrar", " Criar Conta"])
+        # Container branco estilizado
+        st.markdown("""
+        <div class="login-container">
+            <h3 style='text-align: center; color: #11998e; margin-bottom: 1.5rem;'>👋 Acesso</h3>
+        </div>
+        """, unsafe_allow_html=True)
+        
+        tab1, tab2 = st.tabs(["🔑 Entrar", "📝 Criar Conta"])
         
         with tab1:
-            st.markdown("### 👋 Bem-vindo de volta!")
+            st.markdown("### Bem-vindo de volta!")
             email = st.text_input("Email", placeholder="seu@email.com", label_visibility="collapsed")
             pwd = st.text_input("Senha", type="password", placeholder="Sua senha", label_visibility="collapsed")
             
@@ -78,7 +96,7 @@ if not st.session_state.user:
                 else: st.warning("Preencha todos os campos")
 
         with tab2:
-            st.markdown("### 🚀 Nova Conta")
+            st.markdown("### Comece agora!")
             new_email = st.text_input("Email", key="reg_email", placeholder="seu@email.com", label_visibility="collapsed")
             new_pwd = st.text_input("Senha", key="reg_pwd", type="password", placeholder="Mín. 6 caracteres", label_visibility="collapsed")
             new_user = st.text_input("Nome de Usuário", key="reg_user", placeholder="Seu apelido", label_visibility="collapsed")
@@ -93,7 +111,7 @@ if not st.session_state.user:
                     else: st.warning("Senha deve ter pelo menos 6 caracteres")
                 else: st.warning("Preencha todos os campos")
 
-# 5. App Principal (Logado)
+# APP PRINCIPAL (LOGADO)
 else:
     with st.sidebar:
         st.title("🍽️ EmagreSim")
@@ -102,13 +120,13 @@ else:
         profile = db.get_profile()
         if profile:
             st.metric(label="🏆 Nível", value=profile.get('level', 1))
-            st.metric(label=" XP", value=profile.get('experience', 0))
+            st.metric(label="⚡ Pontos", value=profile.get('experience', 0))
             st.metric(label="⚖️ Peso", value=f"{profile.get('current_weight_kg', 0)} kg")
         
         st.markdown("---")
         page = st.radio(
-            "Navegação",
-            ["📊 Dashboard", "🍴 Refeições", "📈 Histórico", "👤 Perfil"],
+            "Menu",
+            ["📊 Painel", "🍴 Refeições", "📈 Histórico", "👤 Perfil"],
             label_visibility="collapsed"
         )
         st.session_state.page = page
@@ -118,9 +136,9 @@ else:
             db.sign_out()
             st.rerun()
 
-    # 6. Roteamento de Telas
+    # ROTEAMENTO DE TELAS
     if profile:
-        if st.session_state.page == "📊 Dashboard":
+        if st.session_state.page == "📊 Painel":
             render_dashboard(db, user_service, psychology, profile)
         elif st.session_state.page == "🍴 Refeições":
             render_refeicoes(db, user_service)
