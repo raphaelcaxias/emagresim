@@ -1,35 +1,78 @@
-/* Estilos personalizados */
+/* EmagreSim - Estilos Personalizados */
+
+/* Tema principal */
 .stApp {
     background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
 }
 
-.main-header {
-    font-size: 2.5rem;
-    font-weight: bold;
-    color: #2c3e50;
-    text-align: center;
-    margin-bottom: 2rem;
-}
-
-.card {
-    background: white;
+/* Cards e containers */
+.css-1r6slb0 {
+    background: rgba(255, 255, 255, 0.95);
     border-radius: 15px;
-    padding: 1.5rem;
-    box-shadow: 0 4px 6px rgba(0,0,0,0.1);
-    margin-bottom: 1rem;
+    padding: 20px;
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.1);
 }
 
-.xp-bar {
-    background: linear-gradient(90deg, #4CAF50, #8BC34A);
+/* Métricas */
+.stMetric {
+    background: white;
+    padding: 15px;
     border-radius: 10px;
-    height: 25px;
-    transition: width 0.5s;
+    box-shadow: 0 4px 15px rgba(0, 0, 0, 0.1);
 }
 
-.level-badge {
-    background: #ff9800;
+/* Botões */
+.stButton > button {
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
     color: white;
-    border-radius: 20px;
-    padding: 0.25rem 1rem;
-    font-weight: bold;
+    border: none;
+    border-radius: 8px;
+    padding: 10px 24px;
+    font-weight: 600;
+    transition: all 0.3s ease;
+}
+
+.stButton > button:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 6px 20px rgba(102, 126, 234, 0.4);
+}
+
+/* Sidebar */
+.css-1d391kg {
+    background: rgba(255, 255, 255, 0.98);
+}
+
+/* Inputs */
+.stTextInput > div > div > input,
+.stNumberInput > div > div > input {
+    border-radius: 8px;
+    border: 2px solid #e0e0e0;
+}
+
+/* Alertas personalizados */
+.success-box {
+    background: #d4edda;
+    border-left: 5px solid #28a745;
+    padding: 15px;
+    border-radius: 8px;
+    margin: 10px 0;
+}
+
+.warning-box {
+    background: #fff3cd;
+    border-left: 5px solid #ffc107;
+    padding: 15px;
+    border-radius: 8px;
+    margin: 10px 0;
+}
+
+/* Animações */
+@keyframes fadeIn {
+    from { opacity: 0; transform: translateY(20px); }
+    to { opacity: 1; transform: translateY(0); }
+}
+
+.css-1r6slb0 {
+    animation: fadeIn 0.5s ease-in;
 }
