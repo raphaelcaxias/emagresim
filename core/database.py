@@ -78,6 +78,7 @@ class SupabaseDB:
             return None
         try:
             user_id = st.session_state["user"]["id"]
+            # Busca todos os dados do perfil
             res = self._auth_client().table("profiles").select("*").eq("id", user_id).execute()
             return res.data[0] if res.data else None
         except:
