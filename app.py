@@ -2,7 +2,7 @@ import streamlit as st
 from core.database import SupabaseDB
 from core.services import UserService
 from core.psychology import PsychologyEngine
-from pages import render_dashboard, render_refeicoes, render_historico, render_perfil
+from views import render_dashboard, render_refeicoes, render_historico, render_perfil
 
 # 1. Configuração Global
 st.set_page_config(
@@ -12,7 +12,7 @@ st.set_page_config(
     initial_sidebar_state="collapsed"
 )
 
-# CSS Profissional (Mantido aqui pois é global)
+# CSS Profissional
 st.markdown("""
 <style>
     @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;700&display=swap');
@@ -52,8 +52,7 @@ db, user_service, psychology = init_services()
 
 # 3. Estado da Sessão
 if "user" not in st.session_state: st.session_state.user = None
-if "page" not in st.session_state: st.session_state.page = "📊 Dashboard"
-if "today_date" not in st.session_state: st.session_state.today_date = str(st.session_state.get("_today_date", "")) or str(pd.Timestamp.now().date())
+if "page" not in st.session_state: st.session_state.page = " Dashboard"
 
 # 4. Tela de Autenticação
 if not st.session_state.user:
@@ -64,7 +63,7 @@ if not st.session_state.user:
 
     col1, col2, col3 = st.columns([1, 2, 1])
     with col2:
-        tab1, tab2 = st.tabs(["🔑 Entrar", "📝 Criar Conta"])
+        tab1, tab2 = st.tabs(["🔑 Entrar", " Criar Conta"])
         
         with tab1:
             st.markdown("### 👋 Bem-vindo de volta!")
@@ -102,14 +101,14 @@ else:
         
         profile = db.get_profile()
         if profile:
-            st.metric(label=" Nível", value=profile.get('level', 1))
+            st.metric(label="🏆 Nível", value=profile.get('level', 1))
             st.metric(label=" XP", value=profile.get('experience', 0))
-            st.metric(label="️ Peso", value=f"{profile.get('current_weight_kg', 0)} kg")
+            st.metric(label="⚖️ Peso", value=f"{profile.get('current_weight_kg', 0)} kg")
         
         st.markdown("---")
         page = st.radio(
             "Navegação",
-            [" Dashboard", "🍴 Refeições", " Histórico", "👤 Perfil"],
+            ["📊 Dashboard", "🍴 Refeições", "📈 Histórico", "👤 Perfil"],
             label_visibility="collapsed"
         )
         st.session_state.page = page
@@ -121,7 +120,7 @@ else:
 
     # 6. Roteamento de Telas
     if profile:
-        if st.session_state.page == " Dashboard":
+        if st.session_state.page == "📊 Dashboard":
             render_dashboard(db, user_service, psychology, profile)
         elif st.session_state.page == "🍴 Refeições":
             render_refeicoes(db, user_service)
