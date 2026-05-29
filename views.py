@@ -8,7 +8,7 @@ def render_dashboard(db, user_service, psychology, profile):
     
     c1, c2, c3, c4 = st.columns(4)
     c1.metric("⚡ XP Total", profile.get('experience', 0))
-    c2.metric("⚖️ Peso Atual", f"{profile.get('current_weight_kg', 0)} kg")
+    c2.metric("️ Peso Atual", f"{profile.get('current_weight_kg', 0)} kg")
     c3.metric("🔥 Sequência", f"{profile.get('streak_days', 0)} dias")
     c4.metric("🎯 Meta", f"{profile.get('goal_weight_kg', 0)} kg")
     
@@ -90,7 +90,7 @@ def render_historico(db):
         st.markdown("### Registros")
         st.dataframe(df[["recorded_at", "weight_kg"]].rename(columns={"recorded_at": "Data", "weight_kg": "Peso (kg)"}), use_container_width=True)
     else:
-        st.info("📝 Registre seu peso em 'Perfil' para ver o histórico.")
+        st.info(" Registre seu peso em 'Perfil' para ver o histórico.")
 
 def render_perfil(db, user_service, profile):
     st.title("👤 Meu Perfil")
