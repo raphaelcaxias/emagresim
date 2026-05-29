@@ -1,388 +1,81 @@
-"""
-Database module - Gerenciamento do banco de dados SQLite
-"""
-import sqlite3
-import pandas as pd
-from datetime import datetime, date
-from typing import Dict, List, Optional, Any
 import os
-import hashlib
+from typing import Dict, List, Optional, Any
+from supabase import create_client, Client
+import streamlit as st
 
+class SupabaseDB:
+    def __init__(self):
+        url = st.secrets["supabase"]["url"]
+        key = st.secrets["supabase"]["anon_key"]
+        self.client: Client = create_client(url, key)
+        
+    def _auth_client(self):
+        """Retorna cliente com sessão do usuário logado (para RLS funcionar)"""
+        if st.session_state.get("auth_token"):
+            self.client.auth.set_session(
+                st.session_state["auth_token"], 
+                st.session_state.get("refresh_token", "")
+            )
+        return self.client
 
-class Database:
-    """Classe principal de gerenciamento de banco de dados"""
-    
-    def __init__(self, db_path: str = None):
-        """
-        Inicializa o banco de dados
+    def sign_up(self, email: str, password: str, username: str = None) -> Dict:
+        res = self.client.auth.sign_up({"email": email, "password": password})
+        if res.user:
+            self.client.table("profiles").update({"username": username or email}).eq("id", res.user.id).execute()
+        return {"success": res.user is not None, "error": getattr(res, "error", None)}
+
+    def sign_in(self, email: str, password: str) -> Dict:
+        res = self.client.auth.sign_in_with_password({"email": email, "password": password})
+        if res.session:
+            st.session_state["auth_token"] = res.session.access_token
+            st.session_state["refresh_token"] = res.session.refresh_token
+            st.session_state["user"] = res.user.dict()
+        return {"success": res.session is not None, "error": getattr(res, "error", None)}
+
+    def sign_out(self):
+        self.client.auth.sign_out()
+        for key in ["auth_token", "refresh_token", "user"]:
+            st.session_state.pop(key, None)
+
+    def get_profile(self) -> Optional[Dict]:
+        if not st.session_state.get("user"): return None
+        res = self._auth_client().table("profiles").select("*").eq("id", st.session_state["user"]["id"]).execute()
+        return res.data[0] if res.data else None
+
+    def update_profile(self, data: Dict) -> bool:
+        res = self._auth_client().table("profiles").update(data).eq("id", st.session_state["user"]["id"]).execute()
+        return res.data is not None
+
+    def add_meal(self, meal: Dict) -> bool:
+        meal["user_id"] = st.session_state["user"]["id"]
+        res = self._auth_client().table("meals").insert(meal).execute()
+        return res.data is not None
+
+    def get_daily_meals(self) -> List[Dict]:
+        today = st.session_state.get("today_date")
+        res = self._auth_client().table("meals").select("*").eq("user_id", st.session_state["user"]["id"]).gte("recorded_at", f"{today}T00:00:00").order("recorded_at", desc=True).execute()
+        return res.data or []
+
+    def add_weight_log(self, weight: float, notes: str = "") -> bool:
+        res = self._auth_client().table("weight_logs").insert({"user_id": st.session_state["user"]["id"], "weight_kg": weight, "notes": notes}).execute()
+        return res.data is not None
+
+    def get_weight_history(self, days: int = 30) -> List[Dict]:
+        res = self._auth_client().table("weight_logs").select("*").eq("user_id", st.session_state["user"]["id"]).order("recorded_at", desc=True).limit(days).execute()
+        return res.data or []
+
+    def update_xp(self, xp_gain: int) -> Dict:
+        profile = self.get_profile()
+        new_xp = profile["experience"] + xp_gain
+        new_level = profile["level"]
+        leveled_up = False
         
-        Args:
-            db_path: Caminho para o arquivo do banco de dados
-        """
-        if db_path is None:
-            # Detectar ambiente Streamlit Cloud
-            if os.getenv("STREAMLIT_CLOUD"):
-                db_path = "/mount/data/emagresim.db"
-            else:
-                db_path = "emagresim.db"
-        
-        self.db_path = db_path
-        self.init_database()
-    
-    def get_connection(self) -> sqlite3.Connection:
-        """Retorna uma conexão com o banco de dados"""
-        conn = sqlite3.connect(self.db_path)
-        conn.row_factory = sqlite3.Row
-        return conn
-    
-    def init_database(self) -> None:
-        """Inicializa as tabelas do banco de dados"""
-        conn = self.get_connection()
-        cursor = conn.cursor()
-        
-        # Tabela de usuários
-        cursor.execute('''
-            CREATE TABLE IF NOT EXISTS users (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                username TEXT UNIQUE NOT NULL,
-                password TEXT NOT NULL,
-                email TEXT,
-                age INTEGER,
-                weight REAL,
-                height REAL,
-                goal_weight REAL,
-                experience INTEGER DEFAULT 0,
-                level INTEGER DEFAULT 1,
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                last_login TIMESTAMP
-            )
-        ''')
-        
-        # Tabela de refeições
-        cursor.execute('''
-            CREATE TABLE IF NOT EXISTS meals (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                user_id INTEGER NOT NULL,
-                meal_type TEXT NOT NULL,
-                food_name TEXT NOT NULL,
-                calories INTEGER NOT NULL,
-                proteins REAL DEFAULT 0,
-                carbs REAL DEFAULT 0,
-                fats REAL DEFAULT 0,
-                meal_time TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                FOREIGN KEY (user_id) REFERENCES users (id)
-            )
-        ''')
-        
-        # Tabela de progresso
-        cursor.execute('''
-            CREATE TABLE IF NOT EXISTS progress (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                user_id INTEGER NOT NULL,
-                date DATE NOT NULL,
-                weight REAL NOT NULL,
-                calories_consumed INTEGER DEFAULT 0,
-                calories_burned INTEGER DEFAULT 0,
-                notes TEXT,
-                FOREIGN KEY (user_id) REFERENCES users (id),
-                UNIQUE(user_id, date)
-            )
-        ''')
-        
-        # Tabela de conquistas
-        cursor.execute('''
-            CREATE TABLE IF NOT EXISTS achievements (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                user_id INTEGER NOT NULL,
-                achievement_name TEXT NOT NULL,
-                description TEXT,
-                earned_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                FOREIGN KEY (user_id) REFERENCES users (id)
-            )
-        ''')
-        
-        conn.commit()
-        conn.close()
-    
-    def hash_password(self, password: str) -> str:
-        """Hasheia a senha usando SHA-256"""
-        return hashlib.sha256(password.encode()).hexdigest()
-    
-    def create_user(self, username: str, password: str, email: str = None) -> Optional[int]:
-        """
-        Cria um novo usuário
-        
-        Args:
-            username: Nome de usuário
-            password: Senha (será hasheada)
-            email: Email do usuário
+        xp_needed = int(100 * (new_level ** 1.5))
+        while new_xp >= xp_needed:
+            new_xp -= xp_needed
+            new_level += 1
+            xp_needed = int(100 * (new_level ** 1.5))
+            leveled_up = True
             
-        Returns:
-            ID do usuário criado ou None se falhar
-        """
-        conn = self.get_connection()
-        cursor = conn.cursor()
-        try:
-            hashed_password = self.hash_password(password)
-            cursor.execute(
-                "INSERT INTO users (username, password, email) VALUES (?, ?, ?)",
-                (username, hashed_password, email)
-            )
-            user_id = cursor.lastrowid
-            conn.commit()
-            return user_id
-        except sqlite3.IntegrityError:
-            return None
-        finally:
-            conn.close()
-    
-    def get_user(self, username: str) -> Optional[Dict[str, Any]]:
-        """
-        Busca usuário por nome de usuário
-        
-        Args:
-            username: Nome de usuário
-            
-        Returns:
-            Dicionário com dados do usuário ou None
-        """
-        conn = self.get_connection()
-        cursor = conn.cursor()
-        cursor.execute("SELECT * FROM users WHERE username = ?", (username,))
-        row = cursor.fetchone()
-        conn.close()
-        
-        if row:
-            return dict(row)
-        return None
-    
-    def get_user_by_id(self, user_id: int) -> Optional[Dict[str, Any]]:
-        """
-        Busca usuário por ID
-        
-        Args:
-            user_id: ID do usuário
-            
-        Returns:
-            Dicionário com dados do usuário ou None
-        """
-        conn = self.get_connection()
-        cursor = conn.cursor()
-        cursor.execute("SELECT * FROM users WHERE id = ?", (user_id,))
-        row = cursor.fetchone()
-        conn.close()
-        
-        if row:
-            return dict(row)
-        return None
-    
-    def update_user_stats(self, user_id: int, **kwargs) -> bool:
-        """
-        Atualiza estatísticas do usuário
-        
-        Args:
-            user_id: ID do usuário
-            **kwargs: Campos a atualizar (weight, experience, level, etc.)
-            
-        Returns:
-            True se atualizou com sucesso
-        """
-        if not kwargs:
-            return False
-        
-        conn = self.get_connection()
-        cursor = conn.cursor()
-        
-        updates = []
-        values = []
-        for key, value in kwargs.items():
-            updates.append(f"{key} = ?")
-            values.append(value)
-        
-        query = f"UPDATE users SET {', '.join(updates)} WHERE id = ?"
-        values.append(user_id)
-        
-        cursor.execute(query, values)
-        conn.commit()
-        conn.close()
-        return True
-    
-    def update_user_profile(self, user_id: int, age: int, weight: float, 
-                           height: float, goal_weight: float, email: str) -> bool:
-        """
-        Atualiza perfil completo do usuário
-        
-        Args:
-            user_id: ID do usuário
-            age: Idade
-            weight: Peso atual
-            height: Altura em cm
-            goal_weight: Peso objetivo
-            email: Email
-            
-        Returns:
-            True se atualizou com sucesso
-        """
-        conn = self.get_connection()
-        cursor = conn.cursor()
-        cursor.execute('''
-            UPDATE users 
-            SET age = ?, weight = ?, height = ?, goal_weight = ?, email = ?
-            WHERE id = ?
-        ''', (age, weight, height, goal_weight, email, user_id))
-        conn.commit()
-        conn.close()
-        return True
-    
-    def add_meal(self, user_id: int, meal_data: Dict[str, Any]) -> Optional[int]:
-        """
-        Adiciona uma refeição
-        
-        Args:
-            user_id: ID do usuário
-            meal_data: Dicionário com dados da refeição
-            
-        Returns:
-            ID da refeição criada ou None
-        """
-        conn = self.get_connection()
-        cursor = conn.cursor()
-        cursor.execute('''
-            INSERT INTO meals (user_id, meal_type, food_name, calories, 
-                             proteins, carbs, fats, meal_time)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-        ''', (
-            user_id,
-            meal_data.get('meal_type', 'snack'),
-            meal_data.get('food_name', ''),
-            meal_data.get('calories', 0),
-            meal_data.get('proteins', 0),
-            meal_data.get('carbs', 0),
-            meal_data.get('fats', 0),
-            meal_data.get('meal_time', datetime.now())
-        ))
-        meal_id = cursor.lastrowid
-        conn.commit()
-        conn.close()
-        return meal_id
-    
-    def get_daily_meals(self, user_id: int, date_obj: date = None) -> List[Dict]:
-        """
-        Busca refeições do dia
-        
-        Args:
-            user_id: ID do usuário
-            date_obj: Data (padrão: hoje)
-            
-        Returns:
-            Lista de refeições
-        """
-        if date_obj is None:
-            date_obj = date.today()
-        
-        conn = self.get_connection()
-        query = '''
-            SELECT * FROM meals 
-            WHERE user_id = ? AND DATE(meal_time) = DATE(?)
-            ORDER BY meal_time DESC
-        '''
-        df = pd.read_sql_query(query, conn, params=(user_id, date_obj))
-        conn.close()
-        return df.to_dict('records')
-    
-    def add_progress(self, user_id: int, weight: float, 
-                    calories_consumed: int = 0, calories_burned: int = 0, 
-                    notes: str = "") -> bool:
-        """
-        Adiciona registro de progresso
-        
-        Args:
-            user_id: ID do usuário
-            weight: Peso registrado
-            calories_consumed: Calorias consumidas no dia
-            calories_burned: Calorias queimadas no dia
-            notes: Observações
-            
-        Returns:
-            True se adicionou com sucesso
-        """
-        conn = self.get_connection()
-        cursor = conn.cursor()
-        try:
-            cursor.execute('''
-                INSERT OR REPLACE INTO progress 
-                (user_id, date, weight, calories_consumed, calories_burned, notes)
-                VALUES (?, DATE('now'), ?, ?, ?, ?)
-            ''', (user_id, weight, calories_consumed, calories_burned, notes))
-            conn.commit()
-            return True
-        finally:
-            conn.close()
-    
-    def get_progress_history(self, user_id: int, days: int = 30) -> pd.DataFrame:
-        """
-        Busca histórico de progresso
-        
-        Args:
-            user_id: ID do usuário
-            days: Número de dias para buscar
-            
-        Returns:
-            DataFrame com histórico
-        """
-        conn = self.get_connection()
-        query = '''
-            SELECT * FROM progress 
-            WHERE user_id = ? AND date >= DATE('now', ?)
-            ORDER BY date ASC
-        '''
-        df = pd.read_sql_query(query, conn, params=(user_id, f'-{days} days'))
-        conn.close()
-        return df
-    
-    def add_achievement(self, user_id: int, achievement_name: str, 
-                       description: str = "") -> bool:
-        """
-        Adiciona conquista ao usuário
-        
-        Args:
-            user_id: ID do usuário
-            achievement_name: Nome da conquista
-            description: Descrição da conquista
-            
-        Returns:
-            True se adicionou com sucesso
-        """
-        conn = self.get_connection()
-        cursor = conn.cursor()
-        try:
-            cursor.execute('''
-                INSERT INTO achievements (user_id, achievement_name, description)
-                VALUES (?, ?, ?)
-            ''', (user_id, achievement_name, description))
-            conn.commit()
-            return True
-        except sqlite3.IntegrityError:
-            return False
-        finally:
-            conn.close()
-    
-    def get_achievements(self, user_id: int) -> List[Dict]:
-        """
-        Busca conquistas do usuário
-        
-        Args:
-            user_id: ID do usuário
-            
-        Returns:
-            Lista de conquistas
-        """
-        conn = self.get_connection()
-        cursor = conn.cursor()
-        cursor.execute(
-            "SELECT * FROM achievements WHERE user_id = ? ORDER BY earned_at DESC",
-            (user_id,)
-        )
-        rows = cursor.fetchall()
-        conn.close()
-        return [dict(row) for row in rows]
+        self._auth_client().table("profiles").update({"experience": new_xp, "level": new_level}).eq("id", st.session_state["user"]["id"]).execute()
+        return {"xp": new_xp, "level": new_level, "leveled_up": leveled_up}
