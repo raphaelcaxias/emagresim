@@ -1,41 +1,41 @@
+# app.py — EmagreSim v33.0 "Mindful Eating & Growth Core"
+# Foco: Emagrecimento/Ganho de Massa + Consciência Alimentar + Foto do Prato + Evolução Real
+
 import streamlit as st
 import pandas as pd
 import plotly.graph_objects as go
-from datetime import datetime, timezone
+import plotly.express as px
+from datetime import datetime, timezone, date, timedelta
 import random
 import json
 import logging
 import traceback
 import hashlib
-from typing import Optional, Dict, List, Tuple, Protocol, runtime_checkable
+from typing import Optional, Dict, List, Tuple
 from dataclasses import dataclass, field
 from enum import Enum
 from supabase import create_client, Client
 
 # ============================================================================
-# CONFIGURAÇÃO GLOBAL & LOGGING
+# CONFIGURAÇÃO GLOBAL
 # ============================================================================
 RANDOM_SEED = 42
 random.seed(RANDOM_SEED)
 DEFAULT_TZ = timezone.utc
 
-logging.basicConfig(
-    level=logging.INFO, 
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
-)
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 logger = logging.getLogger("emagresim")
 
-# ============================================================================
-# CONFIGURAÇÃO STREAMLIT (LAYOUT COMPACTO & CLEAN)
-# ============================================================================
 st.set_page_config(
-    page_title="EmagreSim • Aderência",
+    page_title="EmagreSim • Transformação",
     page_icon="🌱",
-    layout="centered", # Mudado para centered para criar foco e intimidade de app mobile
+    layout="centered",
     initial_sidebar_state="collapsed",
 )
 
-# INJEÇÃO DE CSS AVANÇADO (Visual Minimalista, Foco em Psicologia e Acolhimento)
+# ============================================================================
+# CSS MODERNO
+# ============================================================================
 CSS = """
 <style>
     @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
@@ -46,80 +46,135 @@ CSS = """
         color: #1e293b;
     }
     
-    /* Remover blocos e paddings excessivos do Streamlit */
     .block-container {
         padding-top: 2rem !important;
         padding-bottom: 2rem !important;
-        max-width: 760px !important;
+        max-width: 680px !important;
     }
     
-    /* Card de Acolhimento Humano */
-    .narrative-card {
-        background: linear-gradient(135deg, #f0fdf4 0%, #dcfce7 100%);
-        border: 1px solid #bbf7d0;
-        border-radius: 16px;
-        padding: 24px;
-        margin-bottom: 24px;
-        box-shadow: 0 4px 6px -1px rgba(0,0,0,0.05);
-    }
-    .narrative-title {
-        font-size: 1.25rem;
-        font-weight: 700;
-        color: #14532d;
-        margin-bottom: 8px;
-    }
-    .narrative-text {
-        font-size: 1rem;
-        color: #166534;
-        line-height: 1.5;
+    /* Cards */
+    .card {
+        background: white;
+        border-radius: 20px;
+        padding: 20px;
+        margin-bottom: 16px;
+        box-shadow: 0 1px 3px rgba(0,0,0,0.05);
+        border: 1px solid #e2e8f0;
     }
     
-    /* Grid de Métricas em Estilo Bento-Box */
-    .bento-grid {
-        display: grid;
-        grid-template-columns: repeat(3, 1fr);
-        gap: 16px;
-        margin-bottom: 24px;
+    /* Níveis */
+    .level-badge {
+        background: linear-gradient(135deg, #f59e0b, #ea580c);
+        color: white;
+        padding: 4px 12px;
+        border-radius: 20px;
+        font-size: 0.75rem;
+        font-weight: 600;
+        display: inline-block;
     }
-    .bento-item {
+    
+    /* Refeição */
+    .meal-card {
         background: white;
         border: 1px solid #e2e8f0;
+        border-radius: 16px;
+        padding: 16px;
+        margin-bottom: 12px;
+        transition: all 0.2s;
+    }
+    .meal-card:hover {
+        border-color: #f59e0b;
+        box-shadow: 0 4px 12px rgba(0,0,0,0.05);
+    }
+    .meal-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 8px;
+    }
+    .meal-type {
+        font-weight: 600;
+        color: #f59e0b;
+        font-size: 0.8rem;
+        text-transform: uppercase;
+    }
+    .meal-time {
+        font-size: 0.7rem;
+        color: #94a3b8;
+    }
+    .meal-desc {
+        font-size: 0.85rem;
+        color: #334155;
+        margin: 8px 0;
+    }
+    .meal-cal {
+        font-weight: 600;
+        color: #10b981;
+        font-size: 0.8rem;
+    }
+    .meal-photo {
+        margin-top: 8px;
         border-radius: 12px;
+        overflow: hidden;
+    }
+    
+    /* Métricas Grid */
+    .metric-grid {
+        display: grid;
+        grid-template-columns: repeat(3, 1fr);
+        gap: 12px;
+        margin-bottom: 20px;
+    }
+    .metric-card {
+        background: white;
+        border: 1px solid #e2e8f0;
+        border-radius: 16px;
         padding: 16px;
         text-align: center;
-        box-shadow: 0 1px 3px rgba(0,0,0,0.02);
     }
-    .bento-val {
-        font-size: 1.75rem;
+    .metric-value {
+        font-size: 1.8rem;
         font-weight: 700;
         color: #0f172a;
-        margin-top: 4px;
     }
-    .bento-lbl {
-        font-size: 0.85rem;
-        font-weight: 500;
+    .metric-label {
+        font-size: 0.7rem;
         color: #64748b;
         text-transform: uppercase;
         letter-spacing: 0.05em;
     }
     
-    /* Customização Discreta do Form de Check-in */
-    [data-testid="stForm"] {
-        background: white !important;
-        border: 1px solid #e2e8f0 !important;
-        border-radius: 16px !important;
-        padding: 24px !important;
-        box-shadow: 0 4px 6px -1px rgba(0,0,0,0.02) !important;
+    /* Narrative Box */
+    .narrative-box {
+        background: linear-gradient(135deg, #fef3c7, #fde68a);
+        border-radius: 20px;
+        padding: 20px;
+        margin-bottom: 20px;
+        border: 1px solid #fcd34d;
     }
     
-    /* Esconder elementos poluentes nativos do Streamlit */
-    #MainMenu, footer, header {visibility: hidden;}
+    /* Progresso */
+    .progress-bar {
+        background: #e2e8f0;
+        border-radius: 10px;
+        height: 8px;
+        overflow: hidden;
+        margin: 10px 0;
+    }
+    .progress-fill {
+        background: linear-gradient(90deg, #f59e0b, #ea580c);
+        height: 100%;
+        border-radius: 10px;
+        transition: width 0.5s;
+    }
+    
+    #MainMenu, header, footer {display: none;}
 </style>
 """
 st.markdown(CSS, unsafe_allow_html=True)
 
 # ============================================================================
-# CONFIGURAÇÃO SUPABASE
+# SUPABASE
 # ============================================================================
 def get_supabase() -> Optional[Client]:
     try:
@@ -132,493 +187,535 @@ def get_supabase() -> Optional[Client]:
         logger.error(f"Supabase connection failed: {e}")
         return None
 
-supabase: Optional[Client] = get_supabase()
+supabase = get_supabase()
 
 # ============================================================================
-# CONSTANTES E ENUMS
+# CONSTANTES
 # ============================================================================
 class EventType(Enum):
     CHECKIN = "checkin"
-    RELAPSE = "relapse"
-    RETURN = "return"
-    STREAK_BROKEN = "streak_broken"
-    STREAK_RECOVERED = "streak_recovered"
+    MEAL = "meal"
+    WEIGHT = "weight"
     LEVEL_UP = "level_up"
-    ACHIEVEMENT = "achievement"
 
-class PsychologicalMode(Enum):
-    NORMAL = "normal"
-    SURVIVAL = "survival"
-    RETURNING = "returning"
-    STABLE = "stable"
-
-EMOTIONAL_STATES = {
-    "motivado": {"icon": "✨", "color": "#22c55e", "label": "Motivado"}, # Cores hexadecimais explícitas para o Plotly
-    "neutro": {"icon": "😐", "color": "#94a3b8", "label": "Neutro"},
-    "ansioso": {"icon": "😰", "color": "#f59e0b", "label": "Ansioso"},
-    "cansado": {"icon": "😔", "color": "#ef4444", "label": "Cansado"},
-    "frustrado": {"icon": "😞", "color": "#b91c1c", "label": "Frustrado"},
-    "confiante": {"icon": "💪", "color": "#0d9488", "label": "Confiante"},
+EMOTIONS = {
+    "motivado": {"icon": "✨", "label": "Motivado", "color": "#22c55e"},
+    "neutro": {"icon": "😐", "label": "Neutro", "color": "#94a3b8"},
+    "ansioso": {"icon": "😰", "label": "Ansioso", "color": "#f59e0b"},
+    "cansado": {"icon": "😔", "label": "Cansado", "color": "#ef4444"},
+    "confiante": {"icon": "💪", "label": "Confiante", "color": "#0d9488"},
 }
 
-LEVELS = {
-    0: {"name": "Semente", "icon": "🌱", "min_consistency": 0, "desc": "Todo começo é válido."},
-    1: {"name": "Explorador", "icon": "🗺️", "min_consistency": 15, "desc": "Descobrindo seu ritmo."},
-    2: {"name": "Persistente", "icon": "🔥", "min_consistency": 35, "desc": "Construindo presença."},
-    3: {"name": "Reconstrutor", "icon": "🧱", "min_consistency": 55, "desc": "Recair faz parte. Voltar é força."},
-    4: {"name": "Inabalável", "icon": "⚓", "min_consistency": 75, "desc": "Sua consistência é sua âncora."},
-    5: {"name": "Guia", "icon": "🌟", "min_consistency": 90, "desc": "Você inspira pelo exemplo de permanência."},
+MEAL_TYPES = {
+    "cafe": {"name": "☀️ Café da manhã", "order": 1, "cal_hint": 350},
+    "almoco": {"name": "🍽️ Almoço", "order": 2, "cal_hint": 600},
+    "lanche": {"name": "🍎 Lanche", "order": 3, "cal_hint": 200},
+    "jantar": {"name": "🌙 Jantar", "order": 4, "cal_hint": 550},
 }
 
-SCHEMA_VERSION = "1.0.0"
+LEVELS = [
+    {"name": "🌱 Iniciante", "min": 0, "desc": "Todo começo é válido."},
+    {"name": "🔥 Explorador", "min": 15, "desc": "Descobrindo seu ritmo."},
+    {"name": "💪 Persistente", "min": 35, "desc": "Construindo presença."},
+    {"name": "🔄 Reconstrutor", "min": 55, "desc": "Recair faz parte. Voltar é força."},
+    {"name": "⚓ Inabalável", "min": 75, "desc": "Sua consistência é sua âncora."},
+    {"name": "🌟 Guia", "min": 90, "desc": "Você inspira pelo exemplo."},
+]
+
+GOAL_TYPES = {
+    "emagrecer": {"label": "🎯 Emagrecer", "calorie_target": 1800, "weight_loss": 2.0},
+    "ganhar_massa": {"label": "💪 Ganhar massa muscular", "calorie_target": 2500, "weight_gain": 1.0},
+    "manter": {"label": "⚖️ Manter o peso", "calorie_target": 2100, "weight_maintain": 0},
+}
+
+# ============================================================================
+# DATACLASSES
+# ============================================================================
+@dataclass
+class MealEntry:
+    type: str
+    description: str
+    calories: int
+    photo_url: Optional[str] = None
+    timestamp: str = field(default_factory=lambda: datetime.now(DEFAULT_TZ).isoformat())
+    
+    def to_dict(self) -> Dict:
+        return {"type": self.type, "description": self.description, "calories": self.calories, 
+                "photo_url": self.photo_url, "timestamp": self.timestamp}
+
+@dataclass
+class WeightEntry:
+    weight: float
+    timestamp: str = field(default_factory=lambda: datetime.now(DEFAULT_TZ).isoformat())
+    
+    def to_dict(self) -> Dict:
+        return {"weight": self.weight, "timestamp": self.timestamp}
 
 @dataclass
 class BehavioralState:
-    schema_version: str = SCHEMA_VERSION
     user_id: str = ""
+    goal: str = "emagrecer"
+    current_weight: float = 80.0
+    target_weight: float = 70.0
+    height: float = 1.70
+    age: int = 30
+    
     consistency_score: float = 0.0
     current_streak: int = 0
     longest_streak: int = 0
     total_checkins: int = 0
-    last_checkin_utc: Optional[str] = None
+    last_checkin: Optional[str] = None
     current_level: int = 0
-    unlocked_achievements: List[str] = field(default_factory=list)
-    psychological_mode: str = PsychologicalMode.NORMAL.value
+    
+    meals_today: List[Dict] = field(default_factory=list)
+    weight_history: List[Dict] = field(default_factory=list)
     emotion_history: List[Dict] = field(default_factory=list)
-    behavioral_memory: Dict = field(default_factory=dict)
-    risk_score: float = 0.0
-    last_updated_utc: str = field(default_factory=lambda: datetime.now(DEFAULT_TZ).isoformat())
     
-    @property
-    def last_checkin(self) -> Optional[datetime]:
-        if not self.last_checkin_utc:
-            return None
-        return datetime.fromisoformat(self.last_checkin_utc.replace('Z', '+00:00'))
+    def get_level_info(self) -> Dict:
+        for i, level in enumerate(reversed(LEVELS)):
+            if self.consistency_score >= level["min"]:
+                return level
+        return LEVELS[0]
     
-    def to_persist_dict(self) -> Dict:
-        return {
-            "schema_version": self.schema_version,
-            "user_id": self.user_id,
-            "consistency_score": self.consistency_score,
-            "current_streak": self.current_streak,
-            "longest_streak": self.longest_streak,
-            "total_checkins": self.total_checkins,
-            "last_checkin_utc": self.last_checkin_utc,
-            "current_level": self.current_level,
-            "unlocked_achievements": self.unlocked_achievements,
-            "psychological_mode": self.psychological_mode,
-            "emotion_history": self.emotion_history,
-            "behavioral_memory": self.behavioral_memory,
-            "risk_score": self.risk_score,
-            "last_updated_utc": self.last_updated_utc,
-        }
+    def get_progress_to_next_level(self) -> float:
+        current = self.consistency_score
+        for i, level in enumerate(LEVELS):
+            if current < level["min"]:
+                prev_min = LEVELS[i-1]["min"] if i > 0 else 0
+                return (current - prev_min) / (level["min"] - prev_min) * 100 if level["min"] > prev_min else 0
+        return 100
+    
+    def get_bmi(self) -> float:
+        if self.height <= 0:
+            return 0
+        return self.current_weight / (self.height ** 2)
+    
+    def get_bmi_category(self) -> str:
+        bmi = self.get_bmi()
+        if bmi < 18.5: return "Abaixo do peso"
+        if bmi < 25: return "Peso normal"
+        if bmi < 30: return "Sobrepeso"
+        return "Obesidade"
+    
+    def get_daily_calorie_target(self) -> int:
+        return GOAL_TYPES.get(self.goal, GOAL_TYPES["emagrecer"])["calorie_target"]
 
 # ============================================================================
-# REPOSITORY PATTERN
+# REPOSITORY
 # ============================================================================
-@runtime_checkable
-class StateRepository(Protocol):
-    def load_state(self, user_id: str) -> Optional[BehavioralState]: ...
-    def save_state(self, state: BehavioralState) -> bool: ...
-    def log_event(self, user_id: str, event_type: str, metadata: Dict) -> bool: ...
-    def load_events(self, user_id: str, limit: int = 200) -> List[Dict]: ...
-
-class SupabaseRepository:
-    def __init__(self, client: Optional[Client], use_cache: bool = True):
+class StateRepository:
+    def __init__(self, client: Optional[Client]):
         self.client = client
-        self.use_cache = use_cache
-    
-    @staticmethod
-    def _parse_metadata(raw: any) -> Dict:
-        if isinstance(raw, dict): return raw
-        if isinstance(raw, str):
-            try: return json.loads(raw)
-            except json.JSONDecodeError: return {}
-        return {}
-    
-    @st.cache_data(ttl=300)
-    def _cached_events(_self, user_id: str, cache_key: str, limit: int = 200) -> List[Dict]:
-        if not _self.client: return []
-        result = _self.client.table("behavioral_events").select("*").eq("user_id", user_id).order("created_at", desc=True).limit(limit).execute()
-        events = []
-        for row in result.data or []:
-            events.append({
-                "event_type": row["event_type"],
-                "created_at_utc": row["created_at"],
-                "metadata": _self._parse_metadata(row.get("metadata")),
-            })
-        return sorted(events, key=lambda x: x["created_at_utc"])
-    
-    def load_events(self, user_id: str, limit: int = 200) -> List[Dict]:
-        if user_id == "demo-user" or not self.client: return []
-        cache_key = hashlib.md5(f"{user_id}:{limit}".encode()).hexdigest()
-        return self._cached_events(self, user_id, cache_key, limit)
     
     @st.cache_data(ttl=120)
-    def _cached_state(_self, user_id: str, cache_key: str) -> Optional[BehavioralState]:
-        if not _self.client: return None
-        result = _self.client.table("behavioral_state").select("*").eq("user_id", user_id).execute()
-        if not result.data: return None
-        data = result.data[0]
-        return BehavioralState(
-            schema_version=data.get("schema_version", SCHEMA_VERSION),
-            user_id=data["user_id"],
-            consistency_score=data["consistency_score"],
-            current_streak=data["current_streak"],
-            longest_streak=data["longest_streak"],
-            total_checkins=data["total_checkins"],
-            last_checkin_utc=data.get("last_checkin_utc"),
-            current_level=data["current_level"],
-            unlocked_achievements=data.get("unlocked_achievements", []),
-            psychological_mode=data.get("psychological_mode", PsychologicalMode.NORMAL.value),
-            emotion_history=data.get("emotion_history", []),
-            behavioral_memory=data.get("behavioral_memory", {}),
-            risk_score=data.get("risk_score", 0.0),
-            last_updated_utc=data.get("last_updated_utc"),
-        )
-    
-    def load_state(self, user_id: str) -> Optional[BehavioralState]:
-        if user_id == "demo-user" or not self.client: return None
-        cache_key = hashlib.md5(f"{user_id}:state".encode()).hexdigest()
-        return self._cached_state(self, user_id, cache_key)
+    def load_state(_self, user_id: str) -> Optional[BehavioralState]:
+        if user_id == "demo-user" or not _self.client:
+            return None
+        try:
+            result = _self.client.table("behavioral_state").select("*").eq("user_id", user_id).execute()
+            if result.data:
+                data = result.data[0]
+                return BehavioralState(
+                    user_id=data["user_id"],
+                    goal=data.get("goal", "emagrecer"),
+                    current_weight=data.get("current_weight", 80.0),
+                    target_weight=data.get("target_weight", 70.0),
+                    height=data.get("height", 1.70),
+                    age=data.get("age", 30),
+                    consistency_score=data.get("consistency_score", 0),
+                    current_streak=data.get("current_streak", 0),
+                    longest_streak=data.get("longest_streak", 0),
+                    total_checkins=data.get("total_checkins", 0),
+                    last_checkin=data.get("last_checkin"),
+                    current_level=data.get("current_level", 0),
+                    meals_today=data.get("meals_today", []),
+                    weight_history=data.get("weight_history", []),
+                    emotion_history=data.get("emotion_history", []),
+                )
+            return None
+        except Exception as e:
+            logger.error(f"load_state error: {e}")
+            return None
     
     def save_state(self, state: BehavioralState) -> bool:
-        if state.user_id == "demo-user" or not self.client: return False
+        if state.user_id == "demo-user" or not self.client:
+            return False
         try:
-            state.last_updated_utc = datetime.now(DEFAULT_TZ).isoformat()
-            self.client.table("behavioral_state").upsert(
-                state.to_persist_dict(), 
-                on_conflict="user_id"
-            ).execute()
-            if self.use_cache:
-                self._cached_state.clear(self, state.user_id, hashlib.md5(f"{state.user_id}:state".encode()).hexdigest())
+            self.client.table("behavioral_state").upsert({
+                "user_id": state.user_id,
+                "goal": state.goal,
+                "current_weight": state.current_weight,
+                "target_weight": state.target_weight,
+                "height": state.height,
+                "age": state.age,
+                "consistency_score": state.consistency_score,
+                "current_streak": state.current_streak,
+                "longest_streak": state.longest_streak,
+                "total_checkins": state.total_checkins,
+                "last_checkin": state.last_checkin,
+                "current_level": state.current_level,
+                "meals_today": state.meals_today,
+                "weight_history": state.weight_history,
+                "emotion_history": state.emotion_history,
+                "updated_at": datetime.now(DEFAULT_TZ).isoformat(),
+            }, on_conflict="user_id").execute()
+            self.load_state.clear(state.user_id)
             return True
         except Exception as e:
-            logger.error(f"save_state failed: {e}\n{traceback.format_exc()}")
+            logger.error(f"save_state error: {e}")
             return False
     
     def log_event(self, user_id: str, event_type: str, metadata: Dict) -> bool:
-        if user_id == "demo-user" or not self.client: return False
+        if user_id == "demo-user" or not self.client:
+            return False
         try:
             self.client.table("behavioral_events").insert({
                 "user_id": user_id,
                 "event_type": event_type,
-                "metadata": json.dumps(metadata, ensure_ascii=False),
+                "metadata": json.dumps(metadata),
                 "created_at": datetime.now(DEFAULT_TZ).isoformat(),
             }).execute()
-            if self.use_cache:
-                cache_key = hashlib.md5(f"{user_id}:200".encode()).hexdigest()
-                self._cached_events.clear(self, user_id, cache_key, 200)
             return True
         except Exception as e:
-            logger.error(f"log_event failed: {e}")
+            logger.error(f"log_event error: {e}")
             return False
 
-repository: StateRepository = SupabaseRepository(supabase)
+repository = StateRepository(supabase)
 
 # ============================================================================
-# ENGINE DE COMPORTAMENTO
+# BEHAVIORAL ENGINE
 # ============================================================================
 class BehavioralEngine:
-    CONFIG = {
-        "consistency": {
-            "window_days": 30,
-            "decay_rate": 0.02,
-            "min_decay": 0.3,
-            "weights": {"checkin": 2, "return": 3, "achievement": 1, "level_up": 1},
-            "return_bonus": 5,
-            "normalizer": 2.5,
-        },
-        "streak": {"max_gap_days": 1},
-        "risk": {
-            "window_events": 14,
-            "absence_threshold_days": 3,
-            "negative_emotion_weight": 2,
-            "absence_weight": 3,
-        }
-    }
-    
     @staticmethod
-    def _now_utc() -> datetime: return datetime.now(DEFAULT_TZ)
-    
-    @staticmethod
-    def _parse_utc_iso(iso_str: Optional[str]) -> Optional[datetime]:
-        if not iso_str: return None
-        return datetime.fromisoformat(iso_str.replace('Z', '+00:00'))
-    
-    @classmethod
-    def calculate_consistency(cls, events: List[Dict], now_utc: Optional[datetime] = None) -> float:
-        if not events: return 0.0
-        now = now_utc or cls._now_utc()
+    def calculate_consistency(events: List[Dict]) -> float:
+        """Score baseado em presença e ações"""
+        if not events:
+            return 0.0
+        now = datetime.now(DEFAULT_TZ)
         score = 0.0
-        cfg = cls.CONFIG["consistency"]
-        
-        for event in events[-cfg["window_days"]*2:]:
-            event_type = event.get("event_type")
-            weight = cfg["weights"].get(event_type, 1)
-            event_ts = cls._parse_utc_iso(event.get("created_at_utc"))
-            if not event_ts: continue
-                
-            days_ago = (now - event_ts).days
-            decay = max(cfg["min_decay"], 1 - (days_ago * cfg["decay_rate"]))
-            score += weight * decay
-            if event.get("metadata", {}).get("was_absent"):
-                score += cfg["return_bonus"]
-        
-        return round(min(100.0, score / cfg["normalizer"]), 1)
+        for event in events[-60:]:
+            weight = {"checkin": 2, "meal": 1, "weight": 1}.get(event.get("event_type"), 1)
+            try:
+                ts = datetime.fromisoformat(event.get("created_at", "").replace('Z', '+00:00'))
+                days_ago = (now - ts).days
+                decay = max(0.3, 1 - (days_ago * 0.02))
+                score += weight * decay
+            except:
+                pass
+        return round(min(100, score / 2.5), 1)
     
-    @classmethod
-    def calculate_streak(cls, last_checkin_utc: Optional[str], current_streak: int, now_utc: Optional[datetime] = None) -> Tuple[int, bool, bool]:
-        now = now_utc or cls._now_utc()
-        last_checkin = cls._parse_utc_iso(last_checkin_utc)
-        if not last_checkin: return 1, False, False
-        
-        delta_days = (now.date() - last_checkin.date()).days
-        if delta_days == 0: return current_streak, False, False
-        elif delta_days == 1: return current_streak + 1, False, False
-        else: return 1, True, True
-    
-    @classmethod
-    def detect_psychological_mode(cls, events: List[Dict], consistency: float, current_streak: int, now_utc: Optional[datetime] = None) -> str:
-        if not events: return PsychologicalMode.NORMAL.value
-        now = now_utc or cls._now_utc()
-        
-        last_event = next((e for e in sorted(events, key=lambda x: x.get("created_at_utc", ""), reverse=True) if e.get("event_type") in ["checkin", "return"]), None)
-        days_since = (now - cls._parse_utc_iso(last_event.get("created_at_utc"))).days if last_event else 5
-        
-        negative_emotions = {"ansioso", "frustrado", "cansado"}
-        recent_negatives = sum(1 for e in events[-7:] if e.get("metadata", {}).get("emotion") in negative_emotions)
-        negative_ratio = recent_negatives / 7 if len(events) >= 7 else 0
-        
-        if days_since > 4 or negative_ratio > 0.4 or consistency < 30: return PsychologicalMode.SURVIVAL.value
-        if 1 < days_since <= 4: return PsychologicalMode.RETURNING.value
-        if consistency >= 70 and current_streak >= 5: return PsychologicalMode.STABLE.value
-        return PsychologicalMode.NORMAL.value
+    @staticmethod
+    def calculate_streak(last_checkin: Optional[str]) -> Tuple[int, bool]:
+        if not last_checkin:
+            return 1, False
+        try:
+            last = datetime.fromisoformat(last_checkin.replace('Z', '+00:00'))
+            now = datetime.now(DEFAULT_TZ)
+            delta = (now.date() - last.date()).days
+            if delta == 0:
+                return 0, False
+            elif delta == 1:
+                return 1, False
+            else:
+                return 1, True
+        except:
+            return 1, False
     
     @staticmethod
     def calculate_level(consistency: float) -> int:
-        for level in sorted(LEVELS.keys(), reverse=True):
-            if consistency >= LEVELS[level]["min_consistency"]: return level
-        return 0
-    
-    @classmethod
-    def calculate_risk_score(cls, events: List[Dict], now_utc: Optional[datetime] = None) -> float:
-        if len(events) < 5: return 0.0
-        now = now_utc or cls._now_utc()
-        risk = 0.0
-        cfg = cls.CONFIG["risk"]
-        negative_emotions = {"ansioso", "frustrado", "cansado"}
-        
-        for i, event in enumerate(events[:cfg["window_events"]]):
-            event_ts = cls._parse_utc_iso(event.get("created_at_utc"))
-            days_ago = (now - event_ts).days if event_ts else 0
-            weight_decay = 1 - (i / cfg["window_events"])
-            
-            if days_ago > cfg["absence_threshold_days"]: risk += cfg["absence_weight"] * weight_decay
-            if event.get("metadata", {}).get("emotion") in negative_emotions: risk += cfg["negative_emotion_weight"] * weight_decay
-        
-        return min(100.0, round(risk, 1))
-
-    @classmethod
-    def detect_patterns(cls, events: List[Dict]) -> Dict:
-        patterns = {"risky_hours": [], "weekday_tendency": {}, "return_pattern": None}
-        if len(events) < 10: return patterns
-        
-        hour_activity = {h: 0 for h in range(24)}
-        weekday_counts = {i: 0 for i in range(7)}
-        returns = []
-        
-        for e in events:
-            event_ts = cls._parse_utc_iso(e.get("created_at_utc"))
-            if not event_ts: continue
-            if e.get("event_type") == "checkin":
-                hour_activity[event_ts.hour] += 1
-            weekday_counts[event_ts.weekday()] += 1
-            if e.get("event_type") == "return":
-                returns.append(e)
-                
-        if any(hour_activity.values()):
-            avg = sum(hour_activity.values()) / 24
-            patterns["risky_hours"] = [h for h, c in hour_activity.items() if c < avg * 0.5 and c > 0] or [min(hour_activity, key=hour_activity.get)]
-        
-        patterns["weekday_tendency"] = weekday_counts
-        if returns:
-            patterns["return_pattern"] = {"count": len(returns), "last_return_utc": returns[0].get("created_at_utc")}
-        return patterns
+        for i, level in enumerate(LEVELS):
+            if consistency < level["min"]:
+                return max(0, i - 1)
+        return len(LEVELS) - 1
 
 # ============================================================================
 # NARRATIVE ENGINE
 # ============================================================================
 class NarrativeEngine:
     @staticmethod
-    def _get_random_choice(choices: List[str], seed_suffix: str = "") -> str:
-        local_seed = hashlib.md5(f"{RANDOM_SEED}:{seed_suffix}".encode()).hexdigest()
-        rng = random.Random(int(local_seed[:8], 16))
-        return rng.choice(choices)
-    
-    @classmethod
-    def get_greeting(cls, state: BehavioralState, patterns: Dict) -> str:
+    def get_greeting(state: BehavioralState) -> str:
         hour = datetime.now(DEFAULT_TZ).hour
         base = "Bom dia" if hour < 12 else "Boa tarde" if hour < 18 else "Boa noite"
-        mode_names = {"normal": "🌿 Equilíbrio", "survival": "🛡️ Sobrevivência", "returning": "🔄 Reencontro", "stable": "⚓ Constância"}
-        
-        memory_line = ""
-        return_data = patterns.get("return_pattern")
-        if return_data and return_data.get("count", 0) >= 2:
-            memory_line = " Você já voltou outras vezes. Isso mostra resiliência real."
-        elif patterns.get("risky_hours"):
-            hours_str = ", ".join(f"{h}:00" for h in patterns["risky_hours"][:2])
-            memory_line = f" Seu padrão indica atenção por volta de: {hours_str}."
-        
-        return f"{base}. Modo atual: {mode_names.get(state.psychological_mode, 'Equilíbrio')}.{memory_line}"
+        level_info = state.get_level_info()
+        return f"{base}. Você está no nível {level_info['name']} — {level_info['desc']}"
     
-    @classmethod
-    def get_companion_message(cls, state: BehavioralState, patterns: Dict) -> str:
-        if state.psychological_mode == "survival":
-            return "Hoje o único objetivo é registrar presença. Nada além disso importa."
-        if state.psychological_mode == "returning":
-            return "Você escolheu voltar. Esse ato vale mais do que qualquer número de streak."
-        if state.risk_score > 70:
-            return "Você está sustentando consistência alta, mas detectamos cansaço emocional. Vá com calma hoje."
-        if state.current_streak >= 7:
-            return f"Impressionante: {state.current_streak} dias construindo sua presença contínua."
-        return "Sua presença hoje é uma escolha ativa de cuidado próprio. Um passo de cada vez."
-
-# ============================================================================
-# AUTH SERVICE
-# ============================================================================
-class AuthService:
     @staticmethod
-    def get_current_user_id(session_state: Dict) -> str:
-        if "user_id" not in session_state: session_state["user_id"] = "demo-user"
-        return session_state["user_id"]
+    def get_message(state: BehavioralState) -> str:
+        if state.current_streak >= 7:
+            return f"🔥 {state.current_streak} dias seguidos! Isso é consistência real."
+        if state.current_streak >= 3:
+            return f"📈 Você já está há {state.current_streak} dias presente. Continue!"
+        if state.consistency_score < 30:
+            return "🌱 Todo recomeço é uma semente. Hoje é um novo começo."
+        return "💪 Sua presença hoje importa mais do que qualquer número na balança."
 
 # ============================================================================
-# SERVICE LAYER (ORQUESTRAÇÃO)
+# PROCESSING FUNCTIONS
 # ============================================================================
-def load_user_state(user_id: str) -> BehavioralState:
-    state = repository.load_state(user_id)
-    return state or BehavioralState(user_id=user_id)
-
-def process_checkin(user_id: str, emotion: str, actions: List[str], reflection: str) -> BehavioralState:
-    now_utc = datetime.now(DEFAULT_TZ)
-    state = load_user_state(user_id)
-    events = repository.load_events(user_id, limit=100)
+def process_checkin(state: BehavioralState, emotion: str) -> BehavioralState:
+    now_utc = datetime.now(DEFAULT_TZ).isoformat()
+    new_streak, was_broken = BehavioralEngine.calculate_streak(state.last_checkin)
     
-    new_streak, _, is_return = BehavioralEngine.calculate_streak(state.last_checkin_utc, state.current_streak, now_utc)
-    metadata = {"emotion": emotion, "actions_taken": actions, "reflection": reflection, "was_absent": is_return, "streak_after": new_streak}
-    
-    temp_events = events + [{"event_type": "checkin", "created_at_utc": now_utc.isoformat(), "metadata": metadata}]
-    
-    state.consistency_score = BehavioralEngine.calculate_consistency(temp_events, now_utc)
     state.current_streak = new_streak
-    state.longest_streak = BehavioralEngine.update_longest_streak(new_streak, state.longest_streak)
+    state.longest_streak = max(state.longest_streak, new_streak)
     state.total_checkins += 1
-    state.last_checkin_utc = now_utc.isoformat()
-    state.current_level = BehavioralEngine.calculate_level(state.consistency_score)
-    state.psychological_mode = BehavioralEngine.detect_psychological_mode(temp_events, state.consistency_score, new_streak, now_utc)
-    state.risk_score = BehavioralEngine.calculate_risk_score(temp_events, now_utc)
+    state.last_checkin = now_utc
     
-    state.emotion_history.append({"emotion": emotion, "timestamp_utc": now_utc.isoformat(), "streak_at_time": new_streak})
+    state.emotion_history.append({"emotion": emotion, "timestamp": now_utc})
     state.emotion_history = state.emotion_history[-50:]
     
+    # Atualizar consistência (precisa de eventos)
+    events = [{"event_type": "checkin", "created_at": now_utc}]
+    state.consistency_score = BehavioralEngine.calculate_consistency(events)
+    state.current_level = BehavioralEngine.calculate_level(state.consistency_score)
+    
     repository.save_state(state)
-    repository.log_event(user_id, "return" if is_return else "checkin", metadata)
+    repository.log_event(state.user_id, "checkin", {"emotion": emotion, "streak": new_streak})
+    return state
+
+def process_meal(state: BehavioralState, meal_type: str, description: str, calories: int, photo_url: str = None) -> BehavioralState:
+    now_utc = datetime.now(DEFAULT_TZ).isoformat()
+    today = datetime.now(DEFAULT_TZ).date().isoformat()
+    
+    # Limpar refeições de dias anteriores
+    state.meals_today = [m for m in state.meals_today if m.get("date") == today]
+    
+    state.meals_today.append({
+        "date": today,
+        "type": meal_type,
+        "description": description,
+        "calories": calories,
+        "photo_url": photo_url,
+        "time": datetime.now(DEFAULT_TZ).strftime("%H:%M"),
+    })
+    
+    repository.log_event(state.user_id, "meal", {"type": meal_type, "calories": calories})
+    repository.save_state(state)
+    return state
+
+def process_weight(state: BehavioralState, weight: float) -> BehavioralState:
+    now_utc = datetime.now(DEFAULT_TZ).isoformat()
+    state.current_weight = weight
+    state.weight_history.append({"weight": weight, "timestamp": now_utc})
+    state.weight_history = state.weight_history[-90:]
+    
+    repository.log_event(state.user_id, "weight", {"weight": weight})
+    repository.save_state(state)
     return state
 
 # ============================================================================
-# UI LAYER (APRESENTAÇÃO ENXUTA)
+# UI COMPONENTS
 # ============================================================================
-def render_dashboard(state: BehavioralState, patterns: Dict):
-    # Card de Notificação Psicológica (Acolhimento Customizado via HTML/CSS)
-    greeting = NarrativeEngine.get_greeting(state, patterns)
-    companion_msg = NarrativeEngine.get_companion_message(state, patterns)
-    
+def render_narrative(state: BehavioralState):
     st.markdown(f"""
-    <div class="narrative-card">
-        <div class="narrative-title">{greeting}</div>
-        <div class="narrative-text">💬 {companion_msg}</div>
-    </div>
-    """, unsafe_allow_html=True)
-    
-    # Bento Grid de Métricas (HTML injetado para alto controle estético)
-    level_info = LEVELS.get(state.current_level, {})
-    st.markdown(f"""
-    <div class="bento-grid">
-        <div class="bento-item">
-            <div class="bento-lbl">🎯 Consistência</div>
-            <div class="bento-val">{state.consistency_score:.1f}%</div>
-        </div>
-        <div class="bento-item">
-            <div class="bento-lbl">🔥 Streak Atual</div>
-            <div class="bento-val">{state.current_streak} dias</div>
-        </div>
-        <div class="bento-item">
-            <div class="bento-lbl">Jornada</div>
-            <div class="bento-val">{level_info.get('icon', '🌱')} {level_info.get('name')}</div>
+    <div class="narrative-box">
+        <div style="display: flex; justify-content: space-between; align-items: center;">
+            <div>
+                <div style="font-size: 0.8rem; color: #92400e;">{NarrativeEngine.get_greeting(state)}</div>
+                <div style="font-weight: 500; margin-top: 4px;">{NarrativeEngine.get_message(state)}</div>
+            </div>
+            <div class="level-badge">{state.get_level_info()['name']}</div>
         </div>
     </div>
     """, unsafe_allow_html=True)
+
+def render_metrics(state: BehavioralState):
+    today_meals = [m for m in state.meals_today if m.get("date") == datetime.now(DEFAULT_TZ).date().isoformat()]
+    total_calories = sum(m.get("calories", 0) for m in today_meals)
+    calorie_target = state.get_daily_calorie_target()
     
-    # Renderização Discreta do Gráfico Histórico
+    st.markdown(f"""
+    <div class="metric-grid">
+        <div class="metric-card">
+            <div class="metric-value">{state.current_streak}</div>
+            <div class="metric-label">🔥 Sequência</div>
+        </div>
+        <div class="metric-card">
+            <div class="metric-value">{state.consistency_score:.0f}%</div>
+            <div class="metric-label">🎯 Consistência</div>
+        </div>
+        <div class="metric-card">
+            <div class="metric-value">{total_calories}</div>
+            <div class="metric-label">🍽️ Calorias</div>
+        </div>
+    </div>
+    """, unsafe_allow_html=True)
+    
+    # Barra de calorias
+    percent = min(100, (total_calories / calorie_target) * 100)
+    st.markdown(f"""
+    <div style="font-size: 0.7rem; color: #64748b;">Meta diária: {calorie_target} kcal</div>
+    <div class="progress-bar"><div class="progress-fill" style="width: {percent}%;"></div></div>
+    """, unsafe_allow_html=True)
+    
+    # IMC (referência)
+    bmi = state.get_bmi()
+    st.caption(f"📊 IMC: {bmi:.1f} • {state.get_bmi_category()} (referência)")
+
+def render_meals(state: BehavioralState):
+    st.markdown("### 🍽️ Refeições de hoje")
+    
+    today = datetime.now(DEFAULT_TZ).date().isoformat()
+    today_meals = [m for m in state.meals_today if m.get("date") == today]
+    
+    if today_meals:
+        for meal in today_meals:
+            meal_name = MEAL_TYPES.get(meal.get("type"), {}).get("name", meal.get("type"))
+            st.markdown(f"""
+            <div class="meal-card">
+                <div class="meal-header">
+                    <span class="meal-type">{meal_name}</span>
+                    <span class="meal-time">{meal.get('time', '--:--')}</span>
+                </div>
+                <div class="meal-desc">{meal.get('description', '')}</div>
+                <div class="meal-cal">🔥 {meal.get('calories', 0)} kcal</div>
+            </div>
+            """, unsafe_allow_html=True)
+    else:
+        st.info("Nenhuma refeição registrada hoje.")
+    
+    # Formulário de nova refeição
+    with st.expander("➕ Adicionar refeição", expanded=not today_meals):
+        col1, col2 = st.columns(2)
+        with col1:
+            meal_type = st.selectbox("Tipo", options=list(MEAL_TYPES.keys()), format_func=lambda x: MEAL_TYPES[x]["name"])
+        with col2:
+            calories = st.number_input("Calorias (kcal)", min_value=0, max_value=1500, value=MEAL_TYPES[meal_type]["cal_hint"], step=50)
+        
+        description = st.text_area("O que você comeu?", placeholder="Ex: Arroz integral, frango grelhado, salada", height=68)
+        photo = st.camera_input("Tirar foto do prato (opcional)", help="Fotografar ajuda na consciência alimentar")
+        
+        if st.button("✅ Salvar refeição", use_container_width=True):
+            if description:
+                photo_url = None
+                if photo:
+                    photo_url = "temp_photo_url"  # Implementar storage depois
+                state = process_meal(state, meal_type, description, calories, photo_url)
+                st.success(f"🍽️ Refeição registrada! +{calories} kcal")
+                st.rerun()
+            else:
+                st.warning("Descreva o que você comeu")
+
+def render_weight_section(state: BehavioralState):
+    st.markdown("### ⚖️ Acompanhamento de peso")
+    
+    col1, col2 = st.columns(2)
+    with col1:
+        new_weight = st.number_input("Peso atual (kg)", min_value=30.0, max_value=250.0, value=state.current_weight, step=0.1)
+    with col2:
+        target_weight = st.number_input("Peso desejado (kg)", min_value=30.0, max_value=250.0, value=state.target_weight, step=0.5)
+    
+    if new_weight != state.current_weight:
+        if st.button("💾 Registrar peso", use_container_width=True):
+            state = process_weight(state, new_weight)
+            st.success(f"⚖️ Peso registrado: {new_weight:.1f} kg")
+            st.rerun()
+    
+    if target_weight != state.target_weight:
+        state.target_weight = target_weight
+        repository.save_state(state)
+    
+    # Gráfico de evolução
+    if len(state.weight_history) >= 2:
+        df = pd.DataFrame(state.weight_history[-30:])
+        df["timestamp"] = pd.to_datetime(df["timestamp"])
+        fig = px.line(df, x="timestamp", y="weight", title="Evolução do peso", markers=True)
+        fig.update_layout(height=250, margin=dict(l=0, r=0, t=40, b=0))
+        fig.update_traces(line=dict(color="#f59e0b", width=2))
+        st.plotly_chart(fig, use_container_width=True, config={"displayModeBar": False})
+
+def render_history(state: BehavioralState):
+    st.markdown("### 📊 Sua jornada")
+    
+    # Gráfico de emoções
     if state.emotion_history:
-        df = pd.DataFrame(state.emotion_history[-14:])
-        df["date"] = pd.to_datetime(df["timestamp_utc"]).dt.date
-        emotion_counts = df.groupby(["date", "emotion"]).size().unstack(fill_value=0)
+        df = pd.DataFrame(state.emotion_history[-30:])
+        df["date"] = pd.to_datetime(df["timestamp"]).dt.date
+        emotion_counts = df.groupby("emotion").size()
+        if not emotion_counts.empty:
+            fig = px.bar(x=emotion_counts.index, y=emotion_counts.values, labels={"x": "Emoção", "y": "Frequência"}, color=emotion_counts.index)
+            fig.update_layout(height=200, margin=dict(l=0, r=0, t=20, b=0))
+            st.plotly_chart(fig, use_container_width=True)
+    
+    col1, col2, col3 = st.columns(3)
+    col1.metric("Total check-ins", state.total_checkins)
+    col2.metric("Maior sequência", f"{state.longest_streak} dias")
+    col3.metric("Refeições registradas", len([m for m in state.meals_today]))
+    
+    # Progresso para próximo nível
+    progress = state.get_progress_to_next_level()
+    st.markdown(f"### 📈 Progresso para próximo nível")
+    st.progress(progress / 100)
+    st.caption(f"{state.consistency_score:.0f} pontos de consistência")
+
+def render_profile(state: BehavioralState):
+    st.markdown("### 👤 Meu perfil")
+    
+    with st.form("profile_form"):
+        col1, col2 = st.columns(2)
+        with col1:
+            age = st.number_input("Idade", 18, 100, state.age)
+            height = st.number_input("Altura (m)", 1.40, 2.20, state.height, 0.01)
+        with col2:
+            goal = st.selectbox("Objetivo", options=list(GOAL_TYPES.keys()), format_func=lambda x: GOAL_TYPES[x]["label"])
         
-        fig = go.Figure()
-        for emo in emotion_counts.columns:
-            if emo in EMOTIONAL_STATES:
-                fig.add_trace(go.Bar(
-                    name=EMOTIONAL_STATES[emo]["label"],
-                    x=emotion_counts.index,
-                    y=emotion_counts[emo],
-                    marker_color=EMOTIONAL_STATES[emo]["color"] # Aplicação direta da paleta do app
-                ))
-        
-        fig.update_layout(
-            barmode="stack",
-            height=240,
-            margin=dict(l=20, r=20, t=10, b=10),
-            paper_bgcolor='rgba(0,0,0,0)',
-            plot_bgcolor='rgba(0,0,0,0)',
-            legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1)
-        )
-        st.plotly_chart(fig, use_container_width=True, config={'displayModeBar': False})
+        if st.form_submit_button("Salvar perfil"):
+            state.age = age
+            state.height = height
+            state.goal = goal
+            repository.save_state(state)
+            st.success("Perfil atualizado!")
+            st.rerun()
+    
+    st.markdown(f"""
+    <div class="card" style="margin-top: 16px;">
+        <div style="font-size: 0.8rem; color: #64748b;">Sobre você</div>
+        <div><strong>Idade:</strong> {state.age} anos</div>
+        <div><strong>Altura:</strong> {state.height:.2f}m</div>
+        <div><strong>Objetivo:</strong> {GOAL_TYPES.get(state.goal, {}).get('label', 'Emagrecer')}</div>
+        <div><strong>IMC:</strong> {state.get_bmi():.1f} ({state.get_bmi_category()})</div>
+    </div>
+    """, unsafe_allow_html=True)
 
 # ============================================================================
-# MAIN APPLICATION
+# MAIN
 # ============================================================================
 def main():
-    user_id = AuthService.get_current_user_id(st.session_state)
+    user_id = "demo-user"
+    state = repository.load_state(user_id) or BehavioralState(user_id=user_id)
     
-    # Estado Único de Verdade: Carrega da persistência
-    state = load_user_state(user_id)
-    events = repository.load_events(user_id, limit=100)
-    patterns = BehavioralEngine.detect_patterns(events)
+    render_narrative(state)
+    render_metrics(state)
     
-    # UI Element 1: Dashboard Principal (Acolhimento + Dados)
-    render_dashboard(state, patterns)
+    tabs = st.tabs(["🍽️ Refeições", "⚖️ Peso", "📊 Histórico", "👤 Perfil"])
     
-    # UI Element 2: Ação do Usuário posicionada abaixo em formato recolhível/limpo
-    with st.expander("📝 Registrar Presença e Sentimentos", expanded=True):
-        with st.form("checkin_form", clear_on_submit=True):
-            emotion = st.selectbox(
-                "Como se define seu estado emocional hoje?", 
-                options=list(EMOTIONAL_STATES.keys()), 
-                format_func=lambda x: f"{EMOTIONAL_STATES[x]['icon']} {EMOTIONAL_STATES[x]['label']}"
-            )
-            actions = st.multiselect("Esforços conscientes do dia:", ["Hidratação", "Movimento/Treino", "Pausa Consciente", "Expressão de Sentimentos", "Alimentação Atenta"])
-            reflection = st.text_area("Desabafo ou reflexão rápida (opcional):", height=80, max_chars=300)
-            submitted = st.form_submit_button("✅ Marcar Presença")
-            
-            if submitted:
-                process_checkin(user_id, emotion, actions, reflection)
-                st.success("Presença Computada com Sucesso! 🌱")
-                st.rerun() # Ciclo limpo: força o Streamlit a redesenhar os Bento Boxes imediatamente
-                
+    with tabs[0]:
+        render_meals(state)
+    
+    with tabs[1]:
+        render_weight_section(state)
+    
+    with tabs[2]:
+        render_history(state)
+    
+    with tabs[3]:
+        render_profile(state)
+    
+    # Check-in rápido
     st.markdown("---")
-    st.caption(f"EmagreSim Core v32.1 • Ambiente: {'🧪 Demonstração Local' if user_id == 'demo-user' else '🔐 Produção Conectada'} • Horário Base: {datetime.now(DEFAULT_TZ).strftime('%H:%M')} UTC")
+    with st.expander("😊 Como você está se sentindo hoje?"):
+        emotion_cols = st.columns(3)
+        selected = None
+        for idx, (key, data) in enumerate(EMOTIONS.items()):
+            with emotion_cols[idx % 3]:
+                if st.button(f"{data['icon']} {data['label']}", key=f"emotion_{key}", use_container_width=True):
+                    selected = key
+        if selected:
+            state = process_checkin(state, selected)
+            st.success(f"✅ Presença registrada! Você está se sentindo {EMOTIONS[selected]['label']}.")
+            st.rerun()
+    
+    st.caption(f"EmagreSim • Nível {state.get_level_info()['name']} • {state.current_streak} dias de sequência")
 
 if __name__ == "__main__":
     main()
