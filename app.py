@@ -164,4 +164,134 @@ else:
                 )
                 
                 food_name = st.text_input("Alimento")
-                calories = st.number_input("Calorias (kcal)", min_value=0
+                calories = st.number_input("Calorias (kcal)", min_value=0, step=10)
+                proteins = st.number_input("Proteínas (g)", min_value=0.0, step=0.5)
+                carbs = st.number_input("Carboidratos (g)", min_value=0.0, step=0.5)
+                fats = st.number_input("Gorduras (g)", min_value=0.0, step=0.5)
+                
+                submitted = st.form_submit_button("Registrar Refeição")
+                
+                if submitted and food_name:
+                    meal_data = {
+                        "meal_type": meal_type,
+                        "food_name": food_name,
+                        "calories": calories,
+                        "proteins": proteins,
+                        "carbs": carbs,
+                        "fats": fats,
+                        "meal_time": datetime.now()
+                    }
+                    
+                    result = user_service.register_meal(st.session_state.user_id, meal_data)
+                    
+                    if result['meal_registered']:
+                        st.success(f"✅ Refeição registrada! +{result['xp_gained']} XP")
+                        if result['leveled_up']:
+                            st.balloons()
+                            st.success(f"🎉 PARABÉNS! Você subiu para o Nível {result['new_level']}! 🎉")
+        
+        with col2:
+            st.subheader("🍽️ Refeições de Hoje")
+            meals_today = db.get_daily_meals(st.session_state.user_id)
+            
+            if meals_today:
+                df = pd.DataFrame(meals_today)
+                st.dataframe(df[['food_name', 'calories', 'proteins', 'carbs', 'fats']])
+                
+                # Gráfico de calorias
+                fig = px.bar(df, x='food_name', y='calories', 
+                             title="Calorias por Refeição")
+                st.plotly_chart(fig, use_container_width=True)
+            else:
+                st.info("Nenhuma refeição registrada hoje.")
+            
+            # Sugestão saudável
+            st.subheader("💡 Sugestão Saudável")
+            suggestion = nutrition.suggest_healthy_meal(meal_type if 'meal_type' in locals() else "snack")
+            st.info(f"🍽️ **{suggestion['name']}**\n\nCalorias: {suggestion['calories']} kcal")
+    
+    elif page == "📈 Histórico":
+        st.markdown('<h1 class="main-header">📈 Histórico de Progresso</h1>', unsafe_allow_html=True)
+        
+        # Gráfico de peso
+        progress_df = db.get_progress_history(st.session_state.user_id, days=30)
+        
+        if not progress_df.empty:
+            fig = px.line(progress_df, x='date', y='weight', 
+                         title="Evolução do Peso - Últimos 30 dias",
+                         markers=True)
+            fig.update_layout(
+                xaxis_title="Data",
+                yaxis_title="Peso (kg)",
+                hovermode='x unified'
+            )
+            st.plotly_chart(fig, use_container_width=True)
+            
+            # Estatísticas
+            col1, col2, col3 = st.columns(3)
+            with col1:
+                initial_weight = progress_df.iloc[0]['weight']
+                current_weight = progress_df.iloc[-1]['weight']
+                total_loss = initial_weight - current_weight
+                st.metric("Perda Total", f"{total_loss:.1f} kg" if total_loss > 0 else f"{total_loss:.1f} kg")
+            with col2:
+                avg_loss = progress_df['weight'].diff().mean()
+                st.metric("Média por Dia", f"{avg_loss:.2f} kg")
+            with col3:
+                streak_data = psychology.analyze_streak(st.session_state.user_id, db)
+                st.metric("Maior Sequência", f"{streak_data['longest_streak']} dias")
+            
+            # Tabela de histórico
+            st.subheader("📋 Registros Detalhados")
+            st.dataframe(progress_df[['date', 'weight', 'calories_consumed', 'calories_burned', 'notes']])
+        else:
+            st.info("Nenhum registro de progresso encontrado. Comece a registrar seu peso!")
+    
+    elif page == "👤 Perfil":
+        st.markdown('<h1 class="main-header">👤 Meu Perfil</h1>', unsafe_allow_html=True)
+        
+        user = db.get_user_by_id(st.session_state.user_id)
+        
+        with st.form("profile_form"):
+            col1, col2 = st.columns(2)
+            
+            with col1:
+                age = st.number_input("Idade", min_value=0, max_value=120, 
+                                     value=user.get('age', 0))
+                weight = st.number_input("Peso (kg)", min_value=0.0, max_value=300.0,
+                                        value=user.get('weight', 0.0), step=0.5)
+                height = st.number_input("Altura (cm)", min_value=0, max_value=250,
+                                        value=user.get('height', 0))
+            
+            with col2:
+                goal_weight = st.number_input("Peso Alvo (kg)", min_value=0.0, max_value=300.0,
+                                             value=user.get('goal_weight', weight), step=0.5)
+                email = st.text_input("Email", value=user.get('email', ''))
+            
+            submitted = st.form_submit_button("Atualizar Perfil")
+            
+            if submitted:
+                # Atualizar dados
+                db.update_user_profile(st.session_state.user_id, age, weight, height, goal_weight, email)
+                st.success("Perfil atualizado com sucesso!")
+                
+                # Registrar peso se mudou
+                if weight != user.get('weight'):
+                    result = user_service.update_weight(st.session_state.user_id, weight)
+                    st.info(result['message'])
+        
+        # Conquistas
+        st.subheader("🏆 Conquistas")
+        # Buscar conquistas do usuário (implementar no database.py)
+        st.info("Complete desafios para desbloquear conquistas!")
+    
+    # Dica de saúde na sidebar
+    st.sidebar.markdown("---")
+    st.sidebar.info(f"💡 **Dica de Saúde:**\n{psychology.get_health_tip()}")
+
+# Rodapé
+st.markdown("---")
+st.markdown(
+    "<p style='text-align: center; color: gray;'>EmagreSim - Transforme sua saúde com gamificação 🎮</p>",
+    unsafe_allow_html=True
+)
