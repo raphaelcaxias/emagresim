@@ -1,50 +1,20 @@
 import streamlit as st
 from supabase import create_client, Client
-import os
 
 class SupabaseDB:
     def __init__(self):
-        st.info("🔍 Iniciando diagnóstico de conexão...")
-        
         try:
-            # Ler secrets
-            if "supabase" not in st.secrets:
-                st.error("❌ Secrets não encontrados! Verifique se [supabase] existe no TOML")
-                st.stop()
-            
             secrets_data = st.secrets["supabase"]
-            self.url = secrets_data.get("url", "").strip()
-            self.key = secrets_data.get("key", "").strip()
-            self.service_key = secrets_data.get("service_role_key", "").strip()
+            self.url = secrets_data["url"].strip()
+            self.key = secrets_data.get("service_role_key", secrets_data.get("key")).strip()
             
-            st.write(f"📍 URL carregada: {self.url[:30]}...")
-            st.write(f"🔑 Key carregada: {self.key[:20]}...")
-            
-            if not self.url:
-                st.error("❌ URL está vazia!")
-                st.stop()
-            if not self.key and not self.service_key:
-                st.error("❌ Nenhuma chave encontrada!")
-                st.stop()
-            
-            # Usar service_role_key se existir, senão usa key normal
-            final_key = self.service_key if self.service_key else self.key
-            
-            st.info("🔄 Criando cliente Supabase...")
-            
-            # Criar cliente
-            self.client: Client = create_client(self.url, final_key)
-            
-            st.success("✅ Conexão estabelecida com sucesso!")
-            st.success("🎉 Supabase pronto para uso!")
+            if not self.url or not self.key:
+                raise KeyError("URL ou chave não encontradas")
+                
+            self.client: Client = create_client(self.url, self.key)
             
         except Exception as e:
-            st.error(f"❌ ERRO CRÍTICO: {type(e).__name__}")
-            st.error(f"📄 Detalhes: {str(e)}")
-            st.warning("💡 Possíveis causas:")
-            st.warning("1. Biblioteca 'supabase' não instalada (verifique requirements.txt)")
-            st.warning("2. URL ou chave inválidas")
-            st.warning("3. Problema de rede temporário no Streamlit Cloud")
+            st.error(f"Erro de conexão: {e}")
             st.stop()
 
     def _auth_client(self):
@@ -66,12 +36,20 @@ class SupabaseDB:
                 "options": {"data": {"username": username}}
             })
             if res.user:
+                # Aguarda trigger criar o perfil
                 import time
                 time.sleep(0.5)
-                self.client.table("profiles").update({
-                    "username": username
-                }).eq("id", res.user.id).execute()
-            return {"success": True, "error": None}
+                
+                # Atualiza username se necessário
+                if username:
+                    try:
+                        self.client.table("profiles").update({
+                            "username": username
+                        }).eq("id", res.user.id).execute()
+                    except:
+                        pass  # Perfil pode não existir ainda
+                        
+            return {"success": res.user is not None, "error": None}
         except Exception as e:
             return {"success": False, "error": str(e)}
 
@@ -81,11 +59,15 @@ class SupabaseDB:
                 "email": email, 
                 "password": password
             })
+            
             if res.session:
                 st.session_state["auth_token"] = res.session.access_token
                 st.session_state["refresh_token"] = res.session.refresh_token
                 st.session_state["user"] = res.user.dict()
-            return {"success": True, "error": None}
+                return {"success": True, "error": None}
+            else:
+                return {"success": False, "error": "Falha na autenticação"}
+                
         except Exception as e:
             return {"success": False, "error": str(e)}
 
@@ -101,18 +83,21 @@ class SupabaseDB:
         if not st.session_state.get("user"):
             return None
         try:
-            res = self._auth_client().table("profiles").select("*").eq(
-                "id", st.session_state["user"]["id"]
-            ).execute()
-            return res.data[0] if res.data else None
-        except:
+            user_id = st.session_state["user"]["id"]
+            res = self._auth_client().table("profiles").select("*").eq("id", user_id).execute()
+            
+            if res.data and len(res.data) > 0:
+                return res.data[0]
+            else:
+                # Perfil não existe, tenta criar
+                return None
+        except Exception as e:
             return None
 
     def update_profile(self, data):
         try:
-            res = self._auth_client().table("profiles").update(data).eq(
-                "id", st.session_state["user"]["id"]
-            ).execute()
+            user_id = st.session_state["user"]["id"]
+            res = self._auth_client().table("profiles").update(data).eq("id", user_id).execute()
             return res.data is not None
         except:
             return False
@@ -128,8 +113,9 @@ class SupabaseDB:
     def get_daily_meals(self):
         today = st.session_state.get("today_date")
         try:
+            user_id = st.session_state["user"]["id"]
             res = self._auth_client().table("meals").select("*").eq(
-                "user_id", st.session_state["user"]["id"]
+                "user_id", user_id
             ).gte("recorded_at", f"{today}T00:00:00").order(
                 "recorded_at", desc=True
             ).execute()
@@ -139,8 +125,9 @@ class SupabaseDB:
 
     def add_weight_log(self, weight, notes=""):
         try:
+            user_id = st.session_state["user"]["id"]
             res = self._auth_client().table("weight_logs").insert({
-                "user_id": st.session_state["user"]["id"], 
+                "user_id": user_id, 
                 "weight_kg": weight, 
                 "notes": notes
             }).execute()
@@ -150,8 +137,9 @@ class SupabaseDB:
 
     def get_weight_history(self, days=30):
         try:
+            user_id = st.session_state["user"]["id"]
             res = self._auth_client().table("weight_logs").select("*").eq(
-                "user_id", st.session_state["user"]["id"]
+                "user_id", user_id
             ).order("recorded_at", desc=True).limit(days).execute()
             return res.data or []
         except:
@@ -160,21 +148,25 @@ class SupabaseDB:
     def update_xp(self, xp_gain):
         profile = self.get_profile()
         if not profile:
-            return {"error": "Profile not found"}
-        new_xp = profile["experience"] + xp_gain
-        new_level = profile["level"]
+            return {"error": "Perfil não encontrado"}
+        
+        new_xp = profile.get("experience", 0) + xp_gain
+        new_level = profile.get("level", 1)
         leveled_up = False
+        
         xp_needed = int(100 * (new_level ** 1.5))
         while new_xp >= xp_needed:
             new_xp -= xp_needed
             new_level += 1
             xp_needed = int(100 * (new_level ** 1.5))
             leveled_up = True
+        
         try:
+            user_id = st.session_state["user"]["id"]
             self._auth_client().table("profiles").update({
                 "experience": new_xp, 
                 "level": new_level
-            }).eq("id", st.session_state["user"]["id"]).execute()
+            }).eq("id", user_id).execute()
             return {"xp": new_xp, "level": new_level, "leveled_up": leveled_up}
         except:
-            return {"error": "Failed"}
+            return {"error": "Falha ao atualizar XP"}
