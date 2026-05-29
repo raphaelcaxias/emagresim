@@ -61,8 +61,10 @@ def init_services():
 db, user_service, psychology = init_services()
 
 # Estado da Sessão
-if "user" not in st.session_state: st.session_state.user = None
-if "page" not in st.session_state: st.session_state.page = "📊 Painel"
+if "user" not in st.session_state: 
+    st.session_state.user = None
+if "page" not in st.session_state: 
+    st.session_state.page = "📊 Painel"
 
 # TELA DE AUTENTICAÇÃO (BLOCO ÚNICO)
 if not st.session_state.user:
@@ -74,13 +76,6 @@ if not st.session_state.user:
     # Bloco único centralizado com Tabs
     col1, col2, col3 = st.columns([1, 2, 1])
     with col2:
-        # Container branco estilizado
-        st.markdown("""
-        <div class="login-container">
-            <h3 style='text-align: center; color: #11998e; margin-bottom: 1.5rem;'>👋 Acesso</h3>
-        </div>
-        """, unsafe_allow_html=True)
-        
         tab1, tab2 = st.tabs(["🔑 Entrar", "📝 Criar Conta"])
         
         with tab1:
@@ -91,9 +86,12 @@ if not st.session_state.user:
             if st.button("Entrar", use_container_width=True):
                 if email and pwd:
                     res = db.sign_in(email, pwd)
-                    if res["success"]: st.rerun()
-                    else: st.error(f"Erro: {res.get('error', 'Email ou senha incorretos')}")
-                else: st.warning("Preencha todos os campos")
+                    if res["success"]: 
+                        st.rerun()
+                    else: 
+                        st.error(f"Erro: {res.get('error', 'Email ou senha incorretos')}")
+                else: 
+                    st.warning("Preencha todos os campos")
 
         with tab2:
             st.markdown("### Comece agora!")
@@ -106,10 +104,14 @@ if not st.session_state.user:
                     if len(new_pwd) >= 6:
                         res = db.sign_up(new_email, new_pwd, new_user)
                         if res["success"]: 
-                            st.success("✅ Conta criada! Faça login."); st.balloons()
-                        else: st.error(f"Erro: {res['error']}")
-                    else: st.warning("Senha deve ter pelo menos 6 caracteres")
-                else: st.warning("Preencha todos os campos")
+                            st.success("✅ Conta criada! Faça login.")
+                            st.balloons()
+                        else: 
+                            st.error(f"Erro: {res['error']}")
+                    else: 
+                        st.warning("Senha deve ter pelo menos 6 caracteres")
+                else: 
+                    st.warning("Preencha todos os campos")
 
 # APP PRINCIPAL (LOGADO)
 else:
@@ -146,3 +148,7 @@ else:
             render_historico(db)
         elif st.session_state.page == "👤 Perfil":
             render_perfil(db, user_service, profile)
+    else:
+        st.error("❌ Erro ao carregar perfil. Tente fazer login novamente.")
+        if st.button("Tentar Novamente"):
+            st.rerun()
