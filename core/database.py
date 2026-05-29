@@ -36,19 +36,15 @@ class SupabaseDB:
                 "options": {"data": {"username": username}}
             })
             if res.user:
-                # Aguarda trigger criar o perfil
                 import time
                 time.sleep(0.5)
-                
-                # Atualiza username se necessário
                 if username:
                     try:
                         self.client.table("profiles").update({
                             "username": username
                         }).eq("id", res.user.id).execute()
                     except:
-                        pass  # Perfil pode não existir ainda
-                        
+                        pass
             return {"success": res.user is not None, "error": None}
         except Exception as e:
             return {"success": False, "error": str(e)}
@@ -59,7 +55,6 @@ class SupabaseDB:
                 "email": email, 
                 "password": password
             })
-            
             if res.session:
                 st.session_state["auth_token"] = res.session.access_token
                 st.session_state["refresh_token"] = res.session.refresh_token
@@ -67,7 +62,6 @@ class SupabaseDB:
                 return {"success": True, "error": None}
             else:
                 return {"success": False, "error": "Falha na autenticação"}
-                
         except Exception as e:
             return {"success": False, "error": str(e)}
 
@@ -85,13 +79,8 @@ class SupabaseDB:
         try:
             user_id = st.session_state["user"]["id"]
             res = self._auth_client().table("profiles").select("*").eq("id", user_id).execute()
-            
-            if res.data and len(res.data) > 0:
-                return res.data[0]
-            else:
-                # Perfil não existe, tenta criar
-                return None
-        except Exception as e:
+            return res.data[0] if res.data else None
+        except:
             return None
 
     def update_profile(self, data):
