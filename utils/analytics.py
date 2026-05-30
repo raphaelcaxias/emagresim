@@ -3,8 +3,6 @@ import numpy as np
 from datetime import datetime, timedelta
 
 class AnalyticsEngine:
-    """Motor de análises estatísticas para o EmagreSim"""
-    
     @staticmethod
     def calculate_bmi(weight, height_cm):
         if not weight or not height_cm: return None
@@ -16,40 +14,26 @@ class AnalyticsEngine:
         if bmi is None: return "N/D", "⚪"
         if bmi < 18.5: return "Abaixo", "⚠️"
         if bmi < 24.9: return "Normal", "✅"
-        if bmi < 29.9: return "Sobrepeso", "⚠️"
-        return "Obesidade", ""
+        if bmi < 29.9: return "Sobrepeso", "️"
+        return "Obesidade", "🚨"
     
     @staticmethod
     def calculate_tmb(weight, height_cm, age, gender, activity):
         if not all([weight, height_cm, age, gender]): return None
         base = (10 * weight) + (6.25 * height_cm) - (5 * age)
         base += 5 if gender == 'M' else -161
-        
         multipliers = {'Sedentario': 1.2, 'Leve': 1.375, 'Moderado': 1.55, 'Intenso': 1.725}
         return round(base * multipliers.get(activity, 1.2))
     
     @staticmethod
     def calculate_weight_trend(logs):
-        """Calcula tendência de peso usando regressão linear simples"""
-        df = pd.DataFrame(logs)
-        df = df.dropna(subset=['weight_kg']).sort_values('log_date')
-        
+        df = pd.DataFrame(logs).dropna(subset=['weight_kg']).sort_values('log_date')
         if len(df) < 3: return None
-        
-        # Converte datas para numérico (dias desde 1970)
         df['date_num'] = pd.to_datetime(df['log_date']).apply(lambda x: x.toordinal())
-        
-        # Regressão
-        slope, intercept, r_value, _, _ = np.polyfit(df['date_num'], df['weight_kg'], 1, full=False)[:5]
-        # Nota: np.polyfit retorna coeffs, slope é o primeiro. 
-        # Vamos usar a biblioteca scipy para ser mais preciso com R²
         from scipy import stats
-        slope, intercept, r_value, p_value, std_err = stats.linregress(df['date_num'], df['weight_kg'])
-        
-        current_weight = df['weight_kg'].iloc[-1]
-        
+        slope, intercept, r_value, _, _ = stats.linregress(df['date_num'], df['weight_kg'])
         return {
-            'slope': round(slope, 4), # kg por dia
+            'slope': round(slope, 4),
             'r_squared': round(r_value**2, 2),
-            'trend_text': "Caindo 📉" if slope < -0.01 else "Subindo 📈" if slope > 0.01 else "Estável ➡️"
+            'trend_text': "Caindo 📉" if slope < -0.01 else "Subindo " if slope > 0.01 else "Estável ➡️"
         }
