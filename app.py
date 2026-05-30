@@ -1,224 +1,155 @@
 import streamlit as st
 from core.database import SupabaseDB
-from core.services import UserService
-from core.psychology import PsychologyEngine
-from views import render_dashboard, render_refeicoes, render_historico, render_perfil
+from views import render_onboarding, render_dashboard, render_daily_log, render_profile
 
-# Configuração Global
-st.set_page_config(
-    page_title="EmagreSim", 
-    page_icon="🍽️", 
-    layout="wide",
-    initial_sidebar_state="expanded"
-)
+# ==========================================
+# CONFIGURAÇÃO & CSS PREMIUM
+# ==========================================
+st.set_page_config(page_title="EmagreSim Analytics", page_icon="📊", layout="wide")
 
-# CSS PROFISSIONAL
 st.markdown("""
 <style>
-    @import url('https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;600;700&display=swap');
+    /* FONTE E CORES GLOBAIS */
+    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;700&display=swap');
+    * { font-family: 'Inter', sans-serif; }
     
-    * { font-family: 'Poppins', sans-serif; }
+    body { background-color: #f0f2f6; }
     
-    .main {
-        background: linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%);
-        min-height: 100vh;
-    }
-    
-    .block-container {
-        padding-top: 2rem;
-        padding-bottom: 2rem;
-        max-width: 1200px;
-    }
-    
-    section[data-testid="stSidebar"] {
-        background: linear-gradient(180deg, #ffffff 0%, #f0f2f6 100%);
-        border-right: 1px solid #e0e0e0;
-    }
-    
-    .css-1r6slb0, .stAlert, .stInfo, .stSuccess, .stWarning, .stError {
-        background: rgba(255, 255, 255, 0.85) !important;
+    /* CARDS DE VIDRO */
+    .glass-card {
+        background: rgba(255, 255, 255, 0.9);
         backdrop-filter: blur(10px);
-        border-radius: 20px !important;
-        border: 1px solid rgba(255, 255, 255, 0.5) !important;
-        box-shadow: 0 8px 32px rgba(0, 0, 0, 0.05) !important;
-        padding: 1.5rem !important;
-    }
-    
-    [data-testid="stMetric"] {
-        background: white;
-        padding: 1.5rem;
         border-radius: 16px;
-        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.05);
-        border: 1px solid #f0f0f0;
-        text-align: center;
+        border: 1px solid rgba(255, 255, 255, 0.5);
+        box-shadow: 0 4px 20px rgba(0,0,0,0.05);
+        padding: 20px;
+        margin-bottom: 20px;
     }
     
-    [data-testid="stMetricValue"] {
-        color: #2d3436;
-        font-weight: 700;
-        font-size: 2.2rem;
+    /* MÉTRICAS ESTILIZADAS */
+    [data-testid="stMetric"] {
+        background: white; padding: 15px; border-radius: 12px; 
+        box-shadow: 0 2px 10px rgba(0,0,0,0.03); text-align: center;
     }
+    [data-testid="stMetricValue"] { font-size: 2rem; font-weight: 700; color: #2d3436; }
+    [data-testid="stMetricLabel"] { font-size: 0.85rem; text-transform: uppercase; color: #636e72; font-weight: 600; }
     
-    [data-testid="stMetricLabel"] {
-        color: #636e72;
-        font-weight: 500;
-        font-size: 0.9rem;
-        text-transform: uppercase;
-        letter-spacing: 1px;
-    }
-    
+    /* BOTÕES MODERNOS */
     .stButton > button {
-        background: linear-gradient(135deg, #00b894 0%, #00cec9 100%);
-        color: white;
-        border: none;
-        border-radius: 12px;
-        padding: 12px 24px;
-        font-weight: 600;
-        font-size: 1rem;
-        box-shadow: 0 4px 15px rgba(0, 184, 148, 0.3);
-        transition: all 0.3s ease;
-        width: 100%;
+        background: linear-gradient(90deg, #00b894 0%, #00cec9 100%);
+        color: white; border: none; border-radius: 8px; font-weight: 600;
+        box-shadow: 0 4px 15px rgba(0,184,148,0.2); transition: all 0.3s;
     }
+    .stButton > button:hover { transform: translateY(-2px); box-shadow: 0 6px 20px rgba(0,184,148,0.3); }
     
-    .stButton > button:hover {
-        background: linear-gradient(135deg, #00cec9 0%, #00b894 100%);
-        transform: translateY(-2px);
-        box-shadow: 0 6px 20px rgba(0, 184, 148, 0.4);
-    }
+    /* INPUTS */
+    input, select, textarea { border-radius: 8px !important; border: 1px solid #dfe6e9 !important; padding: 10px !important; }
+    input:focus { border-color: #00b894 !important; box-shadow: 0 0 0 3px rgba(0,184,148,0.1) !important; }
     
-    .stTextInput > div > div > input,
-    .stNumberInput > div > div > input,
-    .stSelectbox > div > div > select {
-        background-color: white;
-        border-radius: 10px;
-        border: 1px solid #dfe6e9;
-        padding: 10px;
-        color: #2d3436;
-    }
+    /* SIDEBAR */
+    section[data-testid="stSidebar"] { background: white; border-right: 1px solid #e0e0e0; }
     
-    h1, h2, h3 {
-        color: #2d3436;
-        font-weight: 700;
-    }
-    
-    .stProgress > div > div {
-        background-color: #00b894;
-        border-radius: 10px;
-    }
-    
-    .login-container {
-        max-width: 450px;
-        margin: 0 auto;
-        padding: 2rem;
-    }
-    
-    .main-header {
-        text-align: center;
-        margin-bottom: 2rem;
-    }
+    /* TÍTULOS */
+    h1 { color: #2d3436; font-weight: 800; letter-spacing: -1px; }
+    h2 { color: #2d3436; font-weight: 600; }
+    h3 { color: #636e72; font-weight: 500; }
 </style>
 """, unsafe_allow_html=True)
 
-# Inicialização
+# ==========================================
+# INICIALIZAÇÃO
+# ==========================================
 @st.cache_resource
-def init_services():
-    db = SupabaseDB()
-    return db, UserService(db), PsychologyEngine()
+def init_db(): return SupabaseDB()
 
-db, user_service, psychology = init_services()
+db = init_db()
 
-# Estado
-if "user" not in st.session_state: 
-    st.session_state.user = None
-if "page" not in st.session_state: 
-    st.session_state.page = "📊 Painel"
+if "user" not in st.session_state: st.session_state.user = None
 
-# TELA DE AUTENTICAÇÃO
+# ==========================================
+# TELA DE LOGIN
+# ==========================================
 if not st.session_state.user:
-    st.markdown("<br>", unsafe_allow_html=True)
-    
-    col1, col2, col3 = st.columns([1, 1.2, 1])
-    
+    col1, col2, col3 = st.columns([1, 1.5, 1])
     with col2:
-        # Header Centralizado
-        st.markdown('<div class="main-header">', unsafe_allow_html=True)
+        st.markdown("<br><br>", unsafe_allow_html=True)
         st.title("🍽️ EmagreSim")
-        st.caption("Sua jornada fitness começa aqui")
-        st.markdown('</div>', unsafe_allow_html=True)
-        st.markdown("---")
+        st.subheader("Plataforma de Analytics Corporal")
         
-        tab1, tab2 = st.tabs(["🔑 Entrar", "📝 Criar Conta"])
+        tab1, tab2 = st.tabs([" Entrar", "🚀 Criar Conta"])
         
         with tab1:
-            st.markdown("### Bem-vindo de volta!")
-            email = st.text_input("Email", placeholder="seu@email.com", label_visibility="collapsed")
-            pwd = st.text_input("Senha", type="password", placeholder="Sua senha", label_visibility="collapsed")
-            
-            if st.button("Entrar"):
-                if email and pwd:
+            email = st.text_input("Email", placeholder="seu@email.com")
+            pwd = st.text_input("Senha", type="password", placeholder="••••••••")
+            c1, c2 = st.columns(2)
+            with c1:
+                if st.button("Entrar", use_container_width=True):
                     res = db.sign_in(email, pwd)
-                    if res["success"]: 
-                        st.rerun()
-                    else: 
-                        st.error(f"Erro: {res.get('error', 'Email ou senha incorretos')}")
-                else: 
-                    st.warning("Preencha todos os campos")
+                    if res["success"]: st.rerun()
+                    else: st.error("Falha no login. Verifique os dados.")
+            with c2:
+                if st.button(" Esqueci Senha", use_container_width=True):
+                    try:
+                        db.client.auth.reset_password_for_email(email)
+                        st.success("Link de recuperação enviado!")
+                    except: st.warning("Verifique o email digitado.")
+            
+            st.divider()
+            if st.button("👁️ Entrar como DEMO", use_container_width=True):
+                # Login Mock para Demo
+                st.session_state.user = {"id": "demo-user", "email": "demo@emagresim.com", "user_metadata": {"username": "Visitante"}}
+                st.rerun()
 
         with tab2:
-            st.markdown("### Comece agora!")
-            new_email = st.text_input("Email", key="reg_email", placeholder="seu@email.com", label_visibility="collapsed")
-            new_pwd = st.text_input("Senha", key="reg_pwd", type="password", placeholder="Mín. 6 caracteres", label_visibility="collapsed")
-            new_user = st.text_input("Nome de Usuário", key="reg_user", placeholder="Seu apelido", label_visibility="collapsed")
-            
-            if st.button("Criar Conta"):
-                if new_email and new_pwd and new_user:
-                    if len(new_pwd) >= 6:
-                        res = db.sign_up(new_email, new_pwd, new_user)
-                        if res["success"]: 
-                            st.success("✅ Conta criada! Faça login.")
-                            st.balloons()
-                        else: 
-                            st.error(f"Erro: {res['error']}")
-                    else: 
-                        st.warning("Senha deve ter pelo menos 6 caracteres")
-                else: 
-                    st.warning("Preencha todos os campos")
+            email = st.text_input("Email", key="reg_email")
+            pwd = st.text_input("Senha", type="password", key="reg_pwd")
+            user = st.text_input("Nome de Usuário", key="reg_user")
+            if st.button("Cadastrar", use_container_width=True):
+                res = db.sign_up(email, pwd, user)
+                if res["success"]: st.success("Conta criada! Faça login.")
+                else: st.error(res["error"])
 
-# APP PRINCIPAL
+# ==========================================
+# APLICAÇÃO PRINCIPAL
+# ==========================================
 else:
+    # Verifica se é demo
+    is_demo = st.session_state.user["id"] == "demo-user"
+    
+    # Sidebar
     with st.sidebar:
-        st.markdown("### 🍽️ EmagreSim")
-        st.markdown("---")
+        st.title("🍽️ EmagreSim")
+        if is_demo:
+            st.info("🎭 **Modo Demonstração**\nVeja como funciona!")
         
-        profile = db.get_profile()
-        if profile:
-            st.metric(label="🏆 Nível", value=profile.get('level', 1))
-            st.metric(label="⚡ XP", value=profile.get('experience', 0))
+        st.divider()
         
-        st.markdown("---")
-        page = st.radio(
-            "Menu",
-            ["📊 Painel", "🍴 Refeições", "📈 Histórico", "👤 Perfil"],
-            label_visibility="collapsed"
-        )
-        st.session_state.page = page
+        # Menu de Navegação
+        page = st.radio("Menu", ["📊 Dashboard", "📝 Registro do Dia", "👤 Meu Perfil"])
         
-        st.markdown("---")
-        if st.button("🚪 Sair"):
-            db.sign_out()
-            st.rerun()
+        st.divider()
+        if st.button("🚪 Sair"): db.sign_out(); st.rerun()
 
-    # ROTEAMENTO DE TELAS
-    if profile:
-        if st.session_state.page == "📊 Painel":
-            render_dashboard(db, user_service, psychology, profile)
-        elif st.session_state.page == "🍴 Refeições":
-            render_refeicoes(db, user_service)
-        elif st.session_state.page == "📈 Histórico":
-            render_historico(db)
-        elif st.session_state.page == "👤 Perfil":
-            render_perfil(db, user_service, profile)
+    # Roteamento
+    if is_demo:
+        # Se for demo, simula dados
+        profile = {"level": 5, "experience": 320, "streak_days": 12, "goal_weight_kg": 72.0, 
+                   "current_weight_kg": 78.5, "is_onboarding_complete": True, "gender": "M", "date_of_birth": "1995-01-01", "height_cm": 175, "age": 29}
     else:
-        st.error("❌ Erro ao carregar perfil. Tente fazer login novamente.")
-        if st.button("Tentar Novamente"):
-            st.rerun()
+        profile = db.get_profile()
+    
+    if not profile and not is_demo: st.warning("Erro ao carregar perfil."); db.sign_out()
+    
+    # 1. ONBOARDING (Se o usuário ainda não completou o cadastro)
+    elif not profile.get("is_onboarding_complete") and not is_demo:
+        if render_onboarding(db, profile):
+            st.rerun() # Recarrega para atualizar o perfil
+            
+    # 2. APP PRINCIPAL
+    else:
+        if page == "📊 Dashboard":
+            render_dashboard(db, profile, is_demo)
+        elif page == "📝 Registro do Dia":
+            render_daily_log(db)
+        elif page == "👤 Meu Perfil":
+            render_profile(db, profile)
