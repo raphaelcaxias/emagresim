@@ -1,162 +1,174 @@
 import streamlit as st
 import pandas as pd
+import plotly.express as px
+import plotly.graph_objects as go
+from datetime import date, datetime
+from utils.calculations import AnalyticsEngine
 
-def render_dashboard(db, user_service, psychology, profile):
-    # Header Personalizado
-    st.markdown(f"### Olá, **{profile.get('username', 'Herói')}!** 👋")
-    st.caption("Aqui está o resumo da sua jornada hoje.")
-    st.markdown("---")
+# ==========================================
+# 1. TELA DE ONBOARDING
+# ==========================================
+def render_onboarding(db, profile):
+    st.title("👋 Bem-vindo! Configure seu Perfil")
+    st.caption("Precisamos destes dados para calcular suas metas e análises.")
     
-    # Grid de Métricas
-    col1, col2, col3, col4 = st.columns(4)
-    with col1:
-        st.metric("🏆 Nível Atual", profile.get('level', 1))
-    with col2:
-        st.metric("⚡ XP Acumulado", profile.get('experience', 0))
-    with col3:
-        st.metric("🔥 Sequência", f"{profile.get('streak_days', 0)} dias")
-    with col4:
-        peso = profile.get('current_weight_kg')
-        st.metric("⚖️ Peso", f"{peso if peso else '-'} kg")
-    
-    # Progresso
-    st.markdown("### 📈 Evolução para o Próximo Nível")
-    level = profile.get('level', 1)
-    xp_needed = int(100 * (level ** 1.5))
-    xp_current = profile.get('experience', 0)
-    progress = min(xp_current / xp_needed, 1.0) if xp_needed > 0 else 0
-    
-    st.progress(progress)
-    st.caption(f"Faltam {max(0, xp_needed - xp_current)} pontos para o nível {level + 1}")
-    
-    st.markdown("---")
-    
-    # Cards de Conteúdo (Motivação e Refeições)
-    col_a, col_b = st.columns([1, 1])
-    
-    with col_a:
-        st.markdown("### 💭 Motivação do Dia")
-        # Card customizado
-        st.markdown(f"""
-        <div style='background: #e3f2fd; padding: 1.5rem; border-radius: 15px; color: #1565c0;'>
-            <h4 style='margin-top:0;'>Inspiração</h4>
-            <p style='margin-bottom:0;'>{psychology.get_daily_motivation()}</p>
-        </div>
-        """, unsafe_allow_html=True)
+    with st.form("onboarding"):
+        c1, c2 = st.columns(2)
+        with c1:
+            dob = st.date_input("Data de Nascimento", value=datetime(1990, 1, 1))
+            age = (datetime.today() - datetime.combine(dob, datetime.min.time())).days // 365
+            st.number_input("Idade (calculada)", value=age, disabled=True)
+            height = st.number_input("Altura (cm)", min_value=100, max_value=250, value=170)
+            gender = st.radio("Gênero", ["M", "F", "Other"])
         
-    with col_b:
-        st.markdown("### 💡 Dica de Saúde")
-        st.markdown(f"""
-        <div style='background: #fff3e0; padding: 1.5rem; border-radius: 15px; color: #e65100;'>
-            <h4 style='margin-top:0;'>Dica Prática</h4>
-            <p style='margin-bottom:0;'>{psychology.get_tip()}</p>
-        </div>
-        """, unsafe_allow_html=True)
-        
-    # Refeições
-    st.markdown("---")
-    st.markdown("### 🍴 Refeições de Hoje")
-    meals = db.get_daily_meals()
-    if meals:
-        total_cal = sum(m.get('calories', 0) for m in meals)
-        st.info(f"🔥 Total: **{total_cal} kcal** consumidos hoje.")
-        
-        cols = st.columns(3)
-        for i, m in enumerate(meals):
-            with cols[i % 3]:
-                tipo_emoji = {"cafe": "☕", "almoco": "🍽️", "jantar": "🌙", "lanche": "🍎"}.get(m.get('meal_type', ''), '🍴')
-                st.markdown(f"""
-                <div style='background: white; padding: 1rem; border-radius: 12px; border-left: 4px solid #00b894; margin-bottom: 0.5rem; box-shadow: 0 2px 5px rgba(0,0,0,0.05);'>
-                    <strong>{tipo_emoji} {m.get('food_name', 'Sem nome')}</strong><br>
-                    <small style='color:#666;'>{m.get('calories', 0)} kcal • {m.get('proteins', 0)}g prot.</small>
-                </div>
-                """, unsafe_allow_html=True)
+        with c2:
+            current_w = st.number_input("Peso Atual (kg)", min_value=30.0, max_value=300.0, value=70.0)
+            goal_w = st.number_input("Peso Meta (kg)", min_value=30.0, max_value=300.0, value=65.0)
+            
+            st.markdown("📏 **Circunferência Abdominal**")
+            st.markdown("_Coloque a fita na altura do umbigo._")
+            waist = st.number_input("Abdômen (cm)", min_value=40.0, max_value=200.0, value=80.0)
+            
+            activity = st.selectbox("Nível de Atividade", ["Sedentario", "Leve", "Moderado", "Intenso"])
+            goal = st.selectbox("Objetivo", ["Perder Peso", "Ganhar Massa", "Manter", "Saude"])
+
+        if st.form_submit_button("✅ Salvar e Iniciar Jornada"):
+            db.update_profile({
+                "date_of_birth": dob.isoformat(), "age": age, "height_cm": height, "gender": gender,
+                "current_weight_kg": current_w, "goal_weight_kg": goal_w, "activity_level": activity,
+                "goal_type": goal, "is_onboarding_complete": True
+            })
+            return True
+    return False
+
+# ==========================================
+# 2. DASHBOARD ANALÍTICO
+# ==========================================
+def render_dashboard(db, profile, is_demo):
+    st.title("📊 Painel de Controle")
+    
+    # Header com KPIs
+    c1, c2, c3, c4 = st.columns(4)
+    c1.metric(" Nível", profile.get("level", 1))
+    c2.metric("⚡ XP", profile.get("experience", 0))
+    c3.metric("⚖️ Peso", f"{profile.get('current_weight_kg', 0)} kg")
+    c4.metric(" Streak", f"{profile.get('streak_days', 0)} dias")
+    
+    st.divider()
+    
+    # Análise Principal (Peso)
+    st.subheader(" Evolução do Peso")
+    
+    if is_demo:
+        # Dados Fake para Demo
+        dates = pd.date_range(end=date.today(), periods=30).strftime('%Y-%m-%d').tolist()
+        weights = [80.0 - (i*0.1) for i in range(30)] # Perda gradual
+        df = pd.DataFrame({"log_date": dates, "weight_kg": weights})
     else:
-        st.markdown("""
-        <div style='text-align: center; padding: 2rem; background: white; border-radius: 15px; border: 2px dashed #dfe6e9;'>
-            <p style='font-size: 1.2rem; color: #636e72;'>Nenhuma refeição registrada hoje.</p>
-            <p>Vá em <b>Refeições</b> para começar! 🚀</p>
-        </div>
-        """, unsafe_allow_html=True)
-
-def render_refeicoes(db, user_service):
-    st.title("🍴 Registrar Refeição")
-    st.markdown("Adicione o que comeu para ganhar XP e manter o controle.")
-    
-    with st.form("meal_form", clear_on_submit=False):
-        col1, col2 = st.columns(2)
-        with col1:
-            tipo = st.selectbox("Tipo de Refeição", ["cafe", "almoco", "jantar", "lanche"], 
-                              format_func=lambda x: {"cafe": "☕ Café da Manhã", "almoco": "🍽️ Almoço", 
-                                                     "jantar": "🌙 Jantar", "lanche": "🍎 Lanche"}[x])
-            nome = st.text_input("Nome do Alimento", placeholder="Ex: Arroz com frango e salada")
-        with col2:
-            cal = st.number_input("Calorias", min_value=0, max_value=2000, value=350, step=10)
-            prot = st.number_input("Proteínas (gramas)", min_value=0.0, max_value=200.0, value=15.0, step=0.5)
-        
-        submitted = st.form_submit_button("✅ Registrar Refeição")
-        
-        if submitted:
-            if nome:
-                with st.spinner("Registrando..."):
-                    res = user_service.register_meal({
-                        "meal_type": tipo, "food_name": nome, "calories": cal, "proteins": prot
-                    })
-                    if res.get("success"):
-                        st.balloons()
-                        st.success(f"🎉 +{res.get('xp', 0)} pontos ganhos!")
-                        if res.get("leveled_up"): 
-                            st.toast(f" PARABÉNS! Nível {res.get('level')}", icon="🎉")
-                        st.rerun()
-                    else: st.error("Erro ao registrar")
-            else: st.warning("Digite o nome do alimento")
-
-def render_historico(db):
-    st.title("📈 Histórico de Peso")
-    logs = db.get_weight_history(90)
-    if logs:
+        logs = db.get_logs_history(30)
         df = pd.DataFrame(logs)
-        df["recorded_at"] = pd.to_datetime(df["recorded_at"]).dt.date
-        df = df.sort_values("recorded_at", ascending=False)
-        
-        col1, col2 = st.columns([3, 1])
-        with col1:
-            st.markdown("### Evolução Gráfica")
-            st.line_chart(df.set_index("recorded_at")["weight_kg"], color="#00b894")
-        with col2:
-            st.markdown("### Resumo")
-            st.metric("Peso Atual", f"{df.iloc[0]['weight_kg']} kg")
-            if len(df) > 1:
-                diff = df.iloc[-1]['weight_kg'] - df.iloc[0]['weight_kg']
-                st.metric("Mudança Total", f"{diff:.1f} kg")
-        
-        st.markdown("### 📋 Registros Recentes")
-        st.dataframe(df[["recorded_at", "weight_kg"]].rename(columns={"recorded_at": "Data", "weight_kg": "Peso (kg)"}), use_container_width=True)
-    else:
-        st.info("Registre seu peso em 'Perfil' para ver o histórico.")
-
-def render_perfil(db, user_service, profile):
-    st.title("👤 Meu Perfil")
-    st.markdown("Mantenha seus dados atualizados para cálculos precisos.")
     
-    with st.form("profile_form"):
-        col1, col2 = st.columns(2)
-        with col1:
-            st.subheader("📋 Informações Pessoais")
-            idade = st.number_input("Idade", min_value=0, max_value=120, value=profile.get("age") or 25)
-            peso = st.number_input("Peso Atual (kg)", min_value=0.0, max_value=300.0, 
-                                 value=float(profile.get("current_weight_kg") or 70.0), step=0.1)
-        with col2:
-            st.subheader(" Metas")
-            altura = st.number_input("Altura (cm)", min_value=0, max_value=250, value=profile.get("height_cm") or 170)
-            meta = st.number_input("Peso Desejado (kg)", min_value=0.0, max_value=300.0, 
-                                 value=float(profile.get("goal_weight_kg") or 65.0), step=0.1)
+    if not df.empty:
+        fig = px.line(df, x="log_date", y="weight_kg", markers=True, title="Últimos 30 Dias")
+        fig.update_layout(xaxis_title="Data", yaxis_title="Peso (kg)", hovermode="x unified")
+        st.plotly_chart(fig, use_container_width=True)
+    else:
+        st.info("Registre seu peso diariamente para ver o gráfico!")
+
+    # Gráficos Secundários (Correlações)
+    c1, c2 = st.columns(2)
+    
+    with c1:
+        st.subheader("💧 Hidratação vs Humor")
+        # Simulação visual
+        fig_bar = px.bar(
+            x=["Seg", "Ter", "Qua", "Qui", "Sex"],
+            y=[2.0, 1.5, 3.0, 2.2, 2.8],
+            color=["Baixo", "Médio", "Alto", "Alto", "Alto"],
+            title="Água vs Humor (Exemplo)",
+            labels={'x':'Dia da Semana', 'y':'Litros'}
+        )
+        st.plotly_chart(fig_bar, use_container_width=True)
+
+    with c2:
+        st.subheader(" Medidas Corporais")
+        fig_radar = go.Figure()
+        fig_radar.add_trace(go.Scatterpolar(
+            r=[profile.get("current_weight_kg", 70), profile.get("height_cm", 170)/2, 80, 30, 50],
+            theta=['Peso', 'Altura/2', 'Abdômen', 'Sono', 'Energia'],
+            fill='toself', name='Atual'
+        ))
+        fig_radar.update_layout(polar=dict(radialaxis=dict(visible=True, range=[0, 100])))
+        st.plotly_chart(fig_radar, use_container_width=True)
+
+# ==========================================
+# 3. REGISTRO DIÁRIO
+# ==========================================
+def render_daily_log(db):
+    st.title("📝 Registro do Dia")
+    st.caption(f"Data: {date.today().strftime('%d/%m/%Y')}")
+    
+    # Verifica se já existe log de hoje
+    existing_log = db.get_daily_log()
+    
+    with st.form("daily_log"):
+        c1, c2 = st.columns(2)
         
-        if st.form_submit_button("💾 Salvar Alterações"):
-            with st.spinner("Salvando..."):
-                db.update_profile({"age": idade, "height_cm": altura, "goal_weight_kg": meta})
-                if abs(peso - profile.get("current_weight_kg", 0)) > 0.01:
-                    res = user_service.update_weight(peso)
-                    st.info(res.get("message", "Peso atualizado"))
-                st.success("✅ Perfil atualizado com sucesso!")
-                st.rerun()
+        with c1:
+            st.markdown("⚖️ **Medidas**")
+            weight = st.number_input("Peso (kg)", value=existing_log["weight_kg"] if existing_log else None)
+            waist = st.number_input("Abdômen (cm)", value=existing_log["waist_cm"] if existing_log else None)
+            
+            st.markdown("🏃 **Atividade**")
+            steps = st.number_input("Passos", step=100, value=existing_log["steps"] if existing_log else 0)
+            exercise = st.number_input("Minutos de Exercício", value=existing_log["exercise_minutes"] if existing_log else 0)
+
+        with c2:
+            st.markdown("💧 **Hidratação & Sono**")
+            water = st.slider("Água (Litros)", 0.0, 5.0, existing_log["water_intake_liters"] if existing_log else 1.5, 0.1)
+            sleep = st.slider("Sono (Horas)", 0.0, 12.0, existing_log["sleep_hours"] if existing_log else 7.0, 0.5)
+            
+            st.markdown("😊 **Bem-estar**")
+            mood = st.selectbox("Humor", ["Feliz", "Neutro", "Triste", "Ansioso", "Cansado"], index=0)
+            stress = st.slider("Estresse (1-10)", 1, 10, existing_log["stress_level"] if existing_log else 5)
+
+        if st.form_submit_button("💾 Salvar Registro"):
+            log_data = {
+                "log_date": date.today().isoformat(),
+                "weight_kg": weight, "waist_cm": waist,
+                "water_intake_liters": water, "sleep_hours": sleep,
+                "mood": mood, "stress_level": stress,
+                "steps": steps, "exercise_minutes": exercise
+            }
+            success = db.save_daily_log(log_data)
+            if success: st.success("✅ Registro salvo com sucesso!"); st.balloons()
+            else: st.error("Erro ao salvar.")
+
+# ==========================================
+# 4. PERFIL
+# ==========================================
+def render_profile(db, profile):
+    st.title("👤 Meu Perfil")
+    
+    # Métricas Calculadas
+    bmi = AnalyticsEngine.calculate_bmi(profile.get("current_weight_kg"), profile.get("height_cm"))
+    cat, icon = AnalyticsEngine.get_bmi_category(bmi)
+    tmb = AnalyticsEngine.calculate_tmb(profile.get("current_weight_kg"), profile.get("height_cm"), profile.get("age"), profile.get("gender"), profile.get("activity_level"))
+    
+    st.markdown(f"### 📊 Seus Números")
+    c1, c2, c3 = st.columns(3)
+    c1.metric(f"IMC {icon}", f"{bmi}", f"{cat}")
+    c2.metric("TMB", f"{tmb} kcal", "Gasto em repouso")
+    c3.metric("Meta", f"{profile.get('goal_weight_kg', 0)} kg")
+    
+    st.divider()
+    
+    with st.form("profile_update"):
+        st.markdown("### ⚙️ Configurações")
+        new_goal = st.number_input("Nova Meta de Peso", value=profile.get("goal_weight_kg"))
+        new_act = st.selectbox("Nível de Atividade", ["Sedentario", "Leve", "Moderado", "Intenso"], index=["Sedentario", "Leve", "Moderado", "Intenso"].index(profile.get("activity_level")))
+        
+        if st.form_submit_button("Atualizar Perfil"):
+            db.update_profile({"goal_weight_kg": new_goal, "activity_level": new_act})
+            st.success("Perfil atualizado!")
+            st.rerun()
