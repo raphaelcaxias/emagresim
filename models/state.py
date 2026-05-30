@@ -2,12 +2,10 @@ from __future__ import annotations
 from dataclasses import dataclass, field, asdict, fields as dc_fields
 from datetime import datetime, timezone
 from enum import Enum
-from typing import Dict, List, Optional, Set
+from typing import Dict, List, Optional
 
 SCHEMA_VERSION = "1.0.0"
 DEFAULT_TZ = timezone.utc
-
-# Campos calculados (não persistem no banco)
 _COMPUTED_FIELDS = frozenset({"last_checkin"})
 _NEGATIVE_EMOTIONS = frozenset({"ansioso", "frustrado", "cansado"})
 
@@ -28,6 +26,33 @@ class EventType(Enum):
     ACHIEVEMENT = "achievement"
 
 
+EMOTIONAL_STATES: Dict[str, Dict] = {
+    "motivado":  {"icon": "✨", "color": "#00b894", "label": "Motivado",  "weight": 1.0},
+    "neutro":    {"icon": "😐", "color": "#636e72", "label": "Neutro",    "weight": 0.7},
+    "ansioso":   {"icon": "😰", "color": "#fdcb6e", "label": "Ansioso",   "weight": 0.4},
+    "cansado":   {"icon": "😔", "color": "#d63031", "label": "Cansado",   "weight": 0.5},
+    "frustrado": {"icon": "😞", "color": "#d63031", "label": "Frustrado", "weight": 0.3},
+    "confiante": {"icon": "💪", "color": "#00cec9", "label": "Confiante", "weight": 1.2},
+}
+
+LEVELS: Dict[int, Dict] = {
+    0: {"name": "Semente",      "icon": "🌱", "min_consistency": 0,  "desc": "Todo começo é válido."},
+    1: {"name": "Explorador",   "icon": "🗺️", "min_consistency": 15, "desc": "Descobrindo seu ritmo."},
+    2: {"name": "Persistente",  "icon": "🔥", "min_consistency": 35, "desc": "Construindo presença."},
+    3: {"name": "Reconstrutor", "icon": "🧱", "min_consistency": 55, "desc": "Recair faz parte. Voltar é força."},
+    4: {"name": "Inabalável",   "icon": "⚓", "min_consistency": 75, "desc": "Sua consistência é sua âncora."},
+    5: {"name": "Guia",         "icon": "🌟", "min_consistency": 90, "desc": "Você inspira pelo exemplo."},
+}
+
+ACHIEVEMENTS: Dict[str, Dict] = {
+    "first_checkin":     {"name": "Primeiro Passo",   "icon": "👣", "desc": "Primeiro check-in registrado."},
+    "courageous_return": {"name": "Retorno Corajoso", "icon": "🔄", "desc": "Voltou após 3+ dias ausente."},
+    "seven_days":        {"name": "Sete Dias",        "icon": "📅", "desc": "Uma semana de presença."},
+    "fourteen_days":     {"name": "Quatorze Dias",    "icon": "🌟", "desc": "Duas semanas de presença."},
+    "no_guilt":          {"name": "Sem Culpa",        "icon": "🕊️", "desc": "Registrou emoção negativa sem abandonar."},
+}
+
+
 @dataclass
 class PsychologicalOnboarding:
     emotional_goal: Optional[str] = None
@@ -45,7 +70,6 @@ class PsychologicalOnboarding:
 
 @dataclass
 class BehavioralState:
-    """Estado comportamental do usuário - serializável para Supabase."""
     schema_version: str = SCHEMA_VERSION
     user_id: str = ""
     consistency_score: float = 0.0
@@ -70,7 +94,6 @@ class BehavioralState:
         return datetime.fromisoformat(self.last_checkin_utc.replace("Z", "+00:00"))
 
     def to_persist_dict(self) -> Dict:
-        """Serializa excluindo campos calculados."""
         return {
             k: v for k, v in asdict(self).items()
             if k not in _COMPUTED_FIELDS
