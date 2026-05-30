@@ -8,7 +8,7 @@ from typing import Dict, List, Optional
 import streamlit as st
 from supabase import create_client, Client
 
-from models.state import BehavioralState
+from models.state import BehavioralState, SCHEMA_VERSION, PsychologicalMode
 
 logger = logging.getLogger(__name__)
 DEFAULT_TZ = timezone.utc
@@ -27,30 +27,27 @@ def _parse_metadata(raw) -> Dict:
 
 @st.cache_data(ttl=120)
 def _cached_load_state(user_id: str, client_key: str) -> Optional[Dict]:
-    if not st.session_state.get("_supabase"):
+    client = st.session_state.get("_supabase")
+    if not client:
         return None
-    result = (
-        st.session_state._supabase.table("behavioral_state")
-        .select("*")
-        .eq("user_id", user_id)
-        .execute()
-    )
+    result = client.table("behavioral_state").select("*").eq("user_id", user_id).execute()
     return result.data[0] if result.data else None
 
 
 @st.cache_data(ttl=300)
 def _cached_load_events(user_id: str, client_key: str, limit: int = 200) -> List[Dict]:
-    if not st.session_state.get("_supabase"):
+    client = st.session_state.get("_supabase")
+    if not client:
         return []
     result = (
-        st.session_state._supabase.table("behavioral_events")
+        client.table("behavioral_events")
         .select("*")
         .eq("user_id", user_id)
         .order("created_at", desc=True)
-        .limit(limit)        .execute()
+        .limit(limit)
+        .execute()
     )
-    events = [
-        {
+    events = [        {
             "event_type": row["event_type"],
             "created_at_utc": row["created_at"],
             "metadata": _parse_metadata(row.get("metadata")),
@@ -77,16 +74,16 @@ class SupabaseRepository:
         if not data:
             return None
         return BehavioralState(
-            schema_version=data.get("schema_version", "1.0.0"),
+            schema_version=data.get("schema_version", SCHEMA_VERSION),
             user_id=data["user_id"],
-            consistency_score=data["consistency_score"],
-            current_streak=data["current_streak"],
-            longest_streak=data["longest_streak"],
-            total_checkins=data["total_checkins"],
+            consistency_score=data.get("consistency_score", 0.0),
+            current_streak=data.get("current_streak", 0),
+            longest_streak=data.get("longest_streak", 0),
+            total_checkins=data.get("total_checkins", 0),
             last_checkin_utc=data.get("last_checkin_utc"),
-            current_level=data["current_level"],
+            current_level=data.get("current_level", 0),
             unlocked_achievements=data.get("unlocked_achievements", []),
-            psychological_mode=data.get("psychological_mode", "normal"),
+            psychological_mode=data.get("psychological_mode", PsychologicalMode.NORMAL.value),
             emotion_history=data.get("emotion_history", []),
             behavioral_memory=data.get("behavioral_memory", {}),
             risk_score=data.get("risk_score", 0.0),
@@ -97,9 +94,9 @@ class SupabaseRepository:
         if user_id == "demo-user" or not self._client:
             return []
         return _cached_load_events(user_id, self._client_key, limit)
+
     def save_state(self, state: BehavioralState) -> bool:
-        if state.user_id == "demo-user" or not self._client:
-            return False
+        if state.user_id == "demo-user" or not self._client:            return False
         try:
             state.last_updated_utc = datetime.now(DEFAULT_TZ).isoformat()
             self._client.table("behavioral_state").upsert(
@@ -107,6 +104,7 @@ class SupabaseRepository:
             ).execute()
             _cached_load_state.clear()
             _cached_load_events.clear()
+            logger.info(f"State saved for user: {state.user_id}")
             return True
         except Exception as e:
             logger.error(f"save_state failed: {e}")
