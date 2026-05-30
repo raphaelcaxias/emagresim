@@ -3,10 +3,68 @@ import pandas as pd
 import plotly.express as px
 import plotly.graph_objects as go
 from datetime import date, datetime, timedelta
+import numpy as np
 
-# CORREÇÃO: Importando do arquivo 'calculations' que você tem na pasta utils
-from utils.calculations import AnalyticsEngine
+# ==========================================
+# CLASSE ANALYTICS ENGINE (INLINE - SEM IMPORT)
+# ==========================================
+class AnalyticsEngine:
+    @staticmethod
+    def calculate_bmi(weight, height_cm):
+        if not weight or not height_cm: 
+            return None
+        height_m = height_cm / 100
+        return round(weight / (height_m ** 2), 1)
+    
+    @staticmethod
+    def get_bmi_category(bmi):
+        if bmi is None: 
+            return "N/D", ""
+        if bmi < 18.5: 
+            return "Abaixo", "⚠️"
+        if bmi < 24.9: 
+            return "Normal", "✅"
+        if bmi < 29.9: 
+            return "Sobrepeso", "⚠️"
+        return "Obesidade", ""
+    
+    @staticmethod
+    def calculate_tmb(weight, height_cm, age, gender, activity):
+        if not all([weight, height_cm, age, gender]): 
+            return None
+        base = (10 * weight) + (6.25 * height_cm) - (5 * age)
+        base += 5 if gender == 'M' else -161
+        
+        multipliers = {'Sedentario': 1.2, 'Leve': 1.375, 'Moderado': 1.55, 'Intenso': 1.725}
+        return round(base * multipliers.get(activity, 1.2))
+    
+    @staticmethod
+    def calculate_weight_trend(logs):
+        try:
+            df = pd.DataFrame(logs)
+            df = df.dropna(subset=['weight_kg']).sort_values('log_date')
+            
+            if len(df) < 3: 
+                return None
+            
+            df['date_num'] = pd.to_datetime(df['log_date']).apply(lambda x: x.toordinal())            slope, intercept = np.polyfit(df['date_num'], df['weight_kg'], 1)
+            
+            y_pred = slope * df['date_num'] + intercept
+            ss_res = np.sum((df['weight_kg'] - y_pred) ** 2)
+            ss_tot = np.sum((df['weight_kg'] - np.mean(df['weight_kg'])) ** 2)
+            r_squared = 1 - (ss_res / ss_tot)
+            
+            return {
+                'slope': round(slope, 4),
+                'r_squared': round(r_squared, 2),
+                'trend_text': "Caindo 📉" if slope < -0.01 else "Subindo 📈" if slope > 0.01 else "Estável ➡️"
+            }
+        except:
+            return None
 
+# ==========================================
+# FUNÇÕES DE RENDERIZAÇÃO
+# ==========================================
 def render_onboarding(db, profile):
     st.title("👋 Complete seu Perfil")
     st.caption("Precisamos destes dados para calcular suas metas e análises.")
@@ -38,16 +96,16 @@ def render_onboarding(db, profile):
 def render_dashboard(db, profile, is_demo):
     st.title("📊 Painel de Analytics")
     
-    bmi = AnalyticsEngine.calculate_bmi(profile.get("current_weight_kg"), profile.get("height_cm"))
-    bmi_cat, bmi_icon = AnalyticsEngine.get_bmi_category(bmi)
+    bmi = AnalyticsEngine.calculate_bmi(profile.get("current_weight_kg"), profile.get("height_cm"))    bmi_cat, bmi_icon = AnalyticsEngine.get_bmi_category(bmi)
     tmb = AnalyticsEngine.calculate_tmb(profile.get("current_weight_kg"), profile.get("height_cm"), 
                                         profile.get("age"), profile.get("gender"), profile.get("activity_level"))
     
     c1, c2, c3, c4 = st.columns(4)
-    c1.metric(" Nível", profile.get("level", 1))
+    c1.metric("🏆 Nível", profile.get("level", 1))
     c2.metric(f"IMC {bmi_icon}", f"{bmi if bmi else '-'}", bmi_cat)
-    c3.metric(" TMB", f"{int(tmb) if tmb else '-'} kcal")
-    c4.metric("🔥 Streak", f"{profile.get('streak_days', 0)} dias")    
+    c3.metric("🔥 TMB", f"{int(tmb) if tmb else '-'} kcal")
+    c4.metric("🔥 Streak", f"{profile.get('streak_days', 0)} dias")
+    
     st.divider()
     
     if is_demo:
@@ -88,15 +146,15 @@ def render_dashboard(db, profile, is_demo):
         st.plotly_chart(fig, use_container_width=True)
     else:
         st.warning("Registre mais dias de peso para ver a tendência.")
-
-    st.subheader(" Consistência de Registro")
+    st.subheader("🔥 Consistência de Registro")
     heatmap_data = []
     today = date.today()
     
     for i in range(28):
         check_date = today - timedelta(days=i)
         count = len(df[df['log_date'] == check_date])
-        heatmap_data.append({'date': check_date, 'count': count})        
+        heatmap_data.append({'date': check_date, 'count': count})
+        
     hm_df = pd.DataFrame(heatmap_data)
     hm_df['weekday'] = hm_df['date'].dt.day_name()
     hm_df['week'] = hm_df['date'].dt.isocalendar().week
@@ -122,7 +180,7 @@ def render_dashboard(db, profile, is_demo):
 
 def render_daily_log(db):
     st.title("📝 Registro do Dia")
-    existing = db.get_daily_log()
+    existing = db.get_daily_log() or {}
     
     with st.form("daily_form"):
         c1, c2 = st.columns(2)
@@ -136,8 +194,7 @@ def render_daily_log(db):
         with c2:
             st.markdown("#### 💧 Estilo de Vida")
             water = st.slider("Água (Litros)", 0.0, 5.0, float(existing.get("water_intake_liters", 1.5)) if existing else 1.5, 0.1)
-            sleep = st.slider("Sono (Horas)", 0.0, 12.0, float(existing.get("sleep_hours", 7.0)) if existing else 7.0, 0.5)
-            st.markdown("#### 😊 Humor")
+            sleep = st.slider("Sono (Horas)", 0.0, 12.0, float(existing.get("sleep_hours", 7.0)) if existing else 7.0, 0.5)            st.markdown("#### 😊 Humor")
             mood = st.selectbox("Humor", ["Feliz", "Neutro", "Triste", "Ansioso", "Cansado"])
             stress = st.slider("Estresse (1-10)", 1, 10, int(existing.get("stress_level", 5)) if existing else 5)
         
@@ -145,7 +202,8 @@ def render_daily_log(db):
             log = {
                 "log_date": date.today().isoformat(),
                 "weight_kg": weight, "waist_cm": waist,
-                "water_intake_liters": water, "sleep_hours": sleep,                "mood": mood, "stress_level": stress,
+                "water_intake_liters": water, "sleep_hours": sleep,
+                "mood": mood, "stress_level": stress,
                 "steps": steps, "exercise_minutes": exercise
             }
             if db.save_daily_log(log):
@@ -185,8 +243,7 @@ def _generate_demo_logs():
     for i in range(30):
         day = base - timedelta(days=29-i)
         logs.append({
-            "log_date": day.isoformat(),
-            "weight_kg": 80.0 - (i * 0.1),
+            "log_date": day.isoformat(),            "weight_kg": 80.0 - (i * 0.1),
             "waist_cm": 90 - (i * 0.05),
             "water_intake_liters": 2.0,
             "sleep_hours": 7.5,
@@ -194,4 +251,5 @@ def _generate_demo_logs():
             "stress_level": 4,
             "steps": 5000,
             "exercise_minutes": 30
-        })    return logs
+        })
+    return logs
