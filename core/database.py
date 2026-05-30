@@ -1,88 +1,129 @@
+from __future__ import annotations
+import hashlib
+import json
+import logging
+from datetime import datetime, timezone
+from typing import Dict, List, Optional
+
 import streamlit as st
 from supabase import create_client, Client
-from datetime import date
 
-class SupabaseDB:
+from models.state import BehavioralState
+
+logger = logging.getLogger(__name__)
+DEFAULT_TZ = timezone.utc
+
+
+def _parse_metadata(raw) -> Dict:
+    if isinstance(raw, dict):
+        return raw
+    if isinstance(raw, str):
+        try:
+            return json.loads(raw)
+        except json.JSONDecodeError:
+            logger.warning(f"Failed to parse metadata: {raw[:60]}...")
+    return {}
+
+
+@st.cache_data(ttl=120)
+def _cached_load_state(user_id: str, client_key: str) -> Optional[Dict]:
+    if not st.session_state.get("_supabase"):
+        return None
+    result = (
+        st.session_state._supabase.table("behavioral_state")
+        .select("*")
+        .eq("user_id", user_id)
+        .execute()
+    )
+    return result.data[0] if result.data else None
+
+
+@st.cache_data(ttl=300)
+def _cached_load_events(user_id: str, client_key: str, limit: int = 200) -> List[Dict]:
+    if not st.session_state.get("_supabase"):
+        return []
+    result = (
+        st.session_state._supabase.table("behavioral_events")
+        .select("*")
+        .eq("user_id", user_id)
+        .order("created_at", desc=True)
+        .limit(limit)        .execute()
+    )
+    events = [
+        {
+            "event_type": row["event_type"],
+            "created_at_utc": row["created_at"],
+            "metadata": _parse_metadata(row.get("metadata")),
+        }
+        for row in (result.data or [])
+    ]
+    return sorted(events, key=lambda x: x["created_at_utc"])
+
+
+class SupabaseRepository:
     def __init__(self):
+        self._client_key = hashlib.md5(
+            (st.secrets.get("SUPABASE_URL", "demo") or "demo").encode()
+        ).hexdigest()
+
+    @property
+    def _client(self) -> Optional[Client]:
+        return st.session_state.get("_supabase")
+
+    def load_state(self, user_id: str) -> Optional[BehavioralState]:
+        if user_id == "demo-user" or not self._client:
+            return None
+        data = _cached_load_state(user_id, self._client_key)
+        if not data:
+            return None
+        return BehavioralState(
+            schema_version=data.get("schema_version", "1.0.0"),
+            user_id=data["user_id"],
+            consistency_score=data["consistency_score"],
+            current_streak=data["current_streak"],
+            longest_streak=data["longest_streak"],
+            total_checkins=data["total_checkins"],
+            last_checkin_utc=data.get("last_checkin_utc"),
+            current_level=data["current_level"],
+            unlocked_achievements=data.get("unlocked_achievements", []),
+            psychological_mode=data.get("psychological_mode", "normal"),
+            emotion_history=data.get("emotion_history", []),
+            behavioral_memory=data.get("behavioral_memory", {}),
+            risk_score=data.get("risk_score", 0.0),
+            last_updated_utc=data.get("last_updated_utc", ""),
+        )
+
+    def load_events(self, user_id: str, limit: int = 200) -> List[Dict]:
+        if user_id == "demo-user" or not self._client:
+            return []
+        return _cached_load_events(user_id, self._client_key, limit)
+    def save_state(self, state: BehavioralState) -> bool:
+        if state.user_id == "demo-user" or not self._client:
+            return False
         try:
-            secrets = st.secrets["supabase"]
-            self.url = secrets["url"].strip()
-            self.key = secrets.get("service_role_key", secrets["key"]).strip()
-            self.client: Client = create_client(self.url, self.key)
+            state.last_updated_utc = datetime.now(DEFAULT_TZ).isoformat()
+            self._client.table("behavioral_state").upsert(
+                state.to_persist_dict(), on_conflict="user_id"
+            ).execute()
+            _cached_load_state.clear()
+            _cached_load_events.clear()
+            return True
         except Exception as e:
-            st.error(f"Erro de conexão: {e}")
-            st.stop()
+            logger.error(f"save_state failed: {e}")
+            return False
 
-    def _auth_client(self):
-        if st.session_state.get("auth_token"):
-            self.client.auth.set_session(st.session_state["auth_token"], st.session_state.get("refresh_token", ""))
-        return self.client
-
-    def sign_up(self, email, password, username):
+    def log_event(self, user_id: str, event_type: str, metadata: Dict) -> bool:
+        if user_id == "demo-user" or not self._client:
+            return False
         try:
-            res = self.client.auth.sign_up({"email": email, "password": password, "options": {"data": {"username": username}}})
-            if res.user:
-                # Inicia onboarding pendente
-                self.client.table("profiles").insert({
-                    "id": res.user.id,
-                    "username": username,
-                    "email": email,
-                    "is_onboarding_complete": False
-                }).execute()
-            return {"success": res.user is not None, "error": None}
-        except Exception as e: return {"success": False, "error": str(e)}
-
-    def sign_in(self, email, password):
-        try:
-            res = self.client.auth.sign_in_with_password({"email": email, "password": password})
-            if res.session:
-                st.session_state["auth_token"] = res.session.access_token
-                st.session_state["refresh_token"] = res.session.refresh_token
-                st.session_state["user"] = res.user.dict()
-            return {"success": res.session is not None, "error": None}
-        except Exception as e: return {"success": False, "error": str(e)}
-
-    def sign_out(self):
-        self.client.auth.sign_out()
-        for k in ["auth_token", "refresh_token", "user"]: st.session_state.pop(k, None)
-
-    def get_profile(self):
-        if not st.session_state.get("user"): return None
-        try:
-            res = self._auth_client().table("profiles").select("*").eq("id", st.session_state["user"]["id"]).execute()
-            return res.data[0] if res.data else None
-        except: return None
-
-    def update_profile(self, data):
-        try:
-            return self._auth_client().table("profiles").update(data).eq("id", st.session_state["user"]["id"]).execute().data is not None
-        except: return False
-
-    # --- NOVOS MÉTODOS ANALÍTICOS ---
-
-    def save_daily_log(self, log_data):
-        try:
-            log_data["user_id"] = st.session_state["user"]["id"]
-            # Upsert (atualiza se já existir hoje)
-            res = self._auth_client().table("daily_logs").upsert(log_data, on_conflict=["user_id", "log_date"]).execute()
-            return res.data is not None
-        except: return False
-
-    def get_daily_log(self, target_date=None):
-        try:
-            d = target_date or date.today().isoformat()
-            res = self._auth_client().table("daily_logs").select("*").eq("user_id", st.session_state["user"]["id"]).eq("log_date", d).execute()
-            return res.data[0] if res.data else None
-        except: return None
-
-    def get_logs_history(self, days=30):
-        try:
-            res = self._auth_client().table("daily_logs").select("*").eq("user_id", st.session_state["user"]["id"]).order("log_date", desc=True).limit(days).execute()
-            return res.data or []
-        except: return []
-
-    def get_achievements(self):
-        try:
-            res = self._auth_client().table("user_achievements").select("achievement_id").eq("user_id", st.session_state["user"]["id"]).execute()
-            return [r["achievement_id"] for r in res.data]
-        except: return []
+            self._client.table("behavioral_events").insert({
+                "user_id": user_id,
+                "event_type": event_type,
+                "metadata": json.dumps(metadata, ensure_ascii=False),
+                "created_at": datetime.now(DEFAULT_TZ).isoformat(),
+            }).execute()
+            _cached_load_events.clear()
+            return True
+        except Exception as e:
+            logger.error(f"log_event failed: {e}")
+            return False
