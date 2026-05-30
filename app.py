@@ -95,8 +95,8 @@ def render_dashboard(db, profile, is_demo):
                                         profile.get("age"), profile.get("gender"), profile.get("activity_level"))
     
     c1, c2, c3, c4 = st.columns(4)
-    c1.metric(" Nível", profile.get("level", 1))
-    c2.metric(f"IMC {bmi_icon}", f"{bmi if bmi else '-'}", bmi_cat)    c3.metric(" TMB", f"{int(tmb) if tmb else '-'} kcal")
+    c1.metric("🏆 Nível", profile.get("level", 1))
+    c2.metric(f"IMC {bmi_icon}", f"{bmi if bmi else '-'}", bmi_cat)    c3.metric("🔥 TMB", f"{int(tmb) if tmb else '-'} kcal")
     c4.metric("🔥 Streak", f"{profile.get('streak_days', 0)} dias")
     st.divider()
     
@@ -104,7 +104,7 @@ def render_dashboard(db, profile, is_demo):
     else: logs = db.get_logs_history(60)
         
     if not logs:
-        st.info("📝 Registre seus dados em 'Registro do Dia' para ver os gráficos!")
+        st.info(" Registre seus dados em 'Registro do Dia' para ver os gráficos!")
         return
 
     df = pd.DataFrame(logs)
@@ -120,14 +120,14 @@ def render_dashboard(db, profile, is_demo):
         
         if trend:
             fig.add_trace(go.Scatter(x=weight_df['log_date'], y=[trend['slope'] * (d.toordinal() - weight_df['log_date'].min().toordinal()) + weight_df['weight_kg'].iloc[0] for d in weight_df['log_date']], mode='lines', name='Tendência', line=dict(color='#0984e3', dash='dash')))
-            st.caption(f"📊 Tendência: {trend['trend_text']} (R² = {trend['r_squared']})")
+            st.caption(f" Tendência: {trend['trend_text']} (R² = {trend['r_squared']})")
             
         fig.update_layout(xaxis_title="Data", yaxis_title="Peso (kg)", height=300, margin=dict(t=20))
         st.plotly_chart(fig, use_container_width=True)
     else: 
         st.warning("Registre mais dias de peso para ver a tendência.")
 
-    st.subheader("🔥 Consistência de Registro")
+    st.subheader(" Consistência de Registro")
     heatmap_data = []
     today = date.today()
     for i in range(28):
@@ -228,7 +228,7 @@ if not st.session_state.user:
     col1, col2, col3 = st.columns([1, 1.5, 1])
     with col2:
         st.title("🍽️ EmagreSim")
-        tab1, tab2 = st.tabs(["🔑 Entrar", "🚀 Criar Conta"])
+        tab1, tab2 = st.tabs(["🔑 Entrar", " Criar Conta"])
         with tab1:
             email = st.text_input("Email")
             pwd = st.text_input("Senha", type="password")
@@ -245,10 +245,10 @@ if not st.session_state.user:
                 if res["success"]: st.success("Conta criada!")
 else:    is_demo = st.session_state.user.get("id") == "demo-user"
     with st.sidebar:
-        st.title("🍽️ EmagreSim")
+        st.title("️ EmagreSim")
         if is_demo: st.info("🎭 **Modo Demonstração**")
         st.divider()
-        page = st.radio("Menu", ["📊 Dashboard", "📝 Registro do Dia", " Meu Perfil"])
+        page = st.radio("Menu", ["📊 Dashboard", " Registro do Dia", "👤 Meu Perfil"])
         st.divider()
         if st.button("🚪 Sair"): db.sign_out(); st.rerun()
 
