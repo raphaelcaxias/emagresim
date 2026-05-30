@@ -1,9 +1,10 @@
+from __future__ import annotations
 import streamlit as st
 import pandas as pd
 import plotly.graph_objects as go
-from datetime import datetime, timezone
+from typing import Callable, Dict, List, Optional
 
-from models.state import BehavioralState, LEVELS, ACHIEVEMENTS, EMOTIONAL_STATES
+from models.state import BehavioralState, EMOTIONAL_STATES, LEVELS, ACHIEVEMENTS
 from core.psychology import NarrativeEngine
 
 
@@ -36,18 +37,18 @@ def render_dashboard(state: BehavioralState, patterns: Dict, risk_score: float) 
         fig = go.Figure(
             [go.Bar(name=emo, x=counts.index, y=counts[emo]) for emo in counts.columns]
         )
-        fig.update_layout(barmode="stack", title="Emoções (14 dias)", height=300)
+        fig.update_layout(barmode="stack", title="Emoções (últimos 14 dias)", height=300)
         st.plotly_chart(fig, use_container_width=True)
 
     if state.unlocked_achievements:
         st.markdown("**🏆 Conquistas**")
         cols = st.columns(min(len(state.unlocked_achievements), 5))
-        for col, key in zip(cols, state.unlocked_achievements):
-            ach = ACHIEVEMENTS.get(key, {})
-            col.markdown(f"{ach.get('icon', '🏅')} **{ach.get('name', key)}**")
+        for col, ach_key in zip(cols, state.unlocked_achievements):
+            ach = ACHIEVEMENTS.get(ach_key, {})
+            col.markdown(f"{ach.get('icon', '🏅')} **{ach.get('name', ach_key)}**")
 
 
-def render_checkin_form(is_demo: bool, on_submit) -> None:
+def render_checkin_form(is_demo: bool, on_submit: Callable) -> None:
     with st.form("checkin_form", clear_on_submit=True):
         st.subheader("📝 Como você está hoje?")
         emotion = st.selectbox(
@@ -66,3 +67,5 @@ def render_checkin_form(is_demo: bool, on_submit) -> None:
             with st.spinner("Registrando…"):
                 on_submit(emotion, actions, reflection)
                 st.success("Presença registrada! 🌱")
+        elif submitted and is_demo:
+            st.warning("Modo demonstração: dados não são salvos.")
