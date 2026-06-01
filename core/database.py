@@ -7,7 +7,6 @@ class AppDatabase:
     def __init__(self):
         self.is_real = False
         
-        # Verifica se tem Supabase configurado
         try:
             if "SUPABASE_URL" in st.secrets and "SUPABASE_KEY" in st.secrets:
                 from supabase import create_client
@@ -19,7 +18,6 @@ class AppDatabase:
         except:
             self.client = None
         
-        # Inicializa mock_db se não existir
         if "mock_db" not in st.session_state:
             st.session_state.mock_db = {
                 "meals": [],
@@ -32,8 +30,8 @@ class AppDatabase:
         if self.is_real and self.client:
             try:
                 self.client.table("meals").insert(data).execute()
-            except:
-                pass
+            except Exception as e:
+                st.error(f"Erro ao salvar refeição: {e}")
         else:
             st.session_state.mock_db["meals"].append(data)
             self._check_achievements()
@@ -42,27 +40,28 @@ class AppDatabase:
         if self.is_real and self.client:
             try:
                 cutoff = (datetime.date.today() - datetime.timedelta(days=days)).isoformat()
-                result = self.client.table("meals").select("*").gte("date", cutoff).execute()
-                return result.data
-            except:
+                result = self.client.table("meals").select("*").gte("record_date", cutoff).execute()
+                return result.data if result.data else []
+            except Exception as e:
+                st.error(f"Erro ao buscar refeições: {e}")
                 return []
         else:
             meals = st.session_state.mock_db["meals"]
             if days:
                 cutoff = datetime.date.today() - datetime.timedelta(days=days)
-                meals = [m for m in meals if datetime.datetime.strptime(m.get("date", "2000-01-01"), "%Y-%m-%d").date() >= cutoff]
+                meals = [m for m in meals if datetime.datetime.strptime(m.get("record_date", m.get("date", "2000-01-01")), "%Y-%m-%d").date() >= cutoff]
             return meals
     
     def get_meals_by_date(self, date_str: str) -> List[Dict]:
         all_meals = self.get_meals(days=None)
-        return [m for m in all_meals if m.get("date") == date_str]
+        return [m for m in all_meals if m.get("record_date", m.get("date")) == date_str]
     
     def save_weight(self, data):
         if self.is_real and self.client:
             try:
                 self.client.table("weights").insert(data).execute()
-            except:
-                pass
+            except Exception as e:
+                st.error(f"Erro ao salvar peso: {e}")
         else:
             st.session_state.mock_db["weights"].append(data)
     
@@ -70,21 +69,22 @@ class AppDatabase:
         if self.is_real and self.client:
             try:
                 cutoff = (datetime.date.today() - datetime.timedelta(days=days)).isoformat()
-                result = self.client.table("weights").select("*").gte("date", cutoff).execute()
+                result = self.client.table("weights").select("*").gte("record_date", cutoff).execute()
                 if result.data:
                     df = pd.DataFrame(result.data)
-                    df['date'] = pd.to_datetime(df['date'])
-                    return df.sort_values('date')
-            except:
+                    df['record_date'] = pd.to_datetime(df['record_date'])
+                    return df.sort_values('record_date')
+            except Exception as e:
+                st.error(f"Erro ao buscar pesos: {e}")
                 pass
             return pd.DataFrame()
         else:
             weights = st.session_state.mock_db["weights"]
             if weights:
                 df = pd.DataFrame(weights)
-                df['date'] = pd.to_datetime(df['date'])
+                df['date'] = pd.to_datetime(df.get('record_date', df.get('date', df.index)))
                 return df.sort_values('date')
-            return pd.DataFrame(columns=['date', 'val'])
+            return pd.DataFrame(columns=['date', 'weight_val'])
     
     def _check_achievements(self):
         meals = self.get_meals(days=None)
@@ -98,7 +98,7 @@ class AppDatabase:
             })
             st.toast("🏆 Conquista: Primeira Refeição!", icon="🎉")
         
-        dates = set(m["date"] for m in meals)
+        dates = set(m.get("record_date", m.get("date")) for m in meals if m.get("record_date") or m.get("date"))
         if len(dates) >= 3 and not any(a["name"] == "streak3" for a in achs):
             st.session_state.mock_db["achievements"].append({
                 "name": "streak3",
