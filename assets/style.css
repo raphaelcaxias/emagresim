@@ -1,78 +1,48 @@
-/* EmagreSim - Estilos Personalizados */
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
 
-/* Tema principal */
-.stApp {
+* { font-family: 'Inter', sans-serif; box-sizing: border-box; }
+
+.modern-card {
     background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+    border-radius: 20px; padding: 1.5rem; color: white;
+    box-shadow: 0 10px 25px -5px rgba(0,0,0,0.1);
+    transition: transform 0.2s;
+}
+.modern-card:hover { transform: translateY(-5px); }
+
+.metric-card {
+    background: white; border-radius: 16px; padding: 1rem;
+    text-align: center; box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+    border: 1px solid #e5e7eb;
+}
+.metric-value { font-size: 2rem; font-weight: 700; color: #667eea; }
+.metric-label { font-size: 0.875rem; color: #6b7280; margin-top: 0.25rem; }
+
+.progress-container {
+    background: #e5e7eb; border-radius: 9999px; height: 0.75rem; overflow: hidden;
+}
+.progress-bar {
+    background: linear-gradient(90deg, #667eea, #764ba2);
+    height: 100%; border-radius: 9999px; transition: width 0.5s ease;
 }
 
-/* Cards e containers */
-.css-1r6slb0 {
-    background: rgba(255, 255, 255, 0.95);
-    border-radius: 15px;
-    padding: 20px;
-    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.1);
+.badge-free {
+    background: #9ca3af; color: white; padding: 0.25rem 0.75rem;
+    border-radius: 9999px; font-size: 0.75rem; font-weight: 600;
+}
+.badge-pro {
+    background: linear-gradient(135deg, #f59e0b, #ef4444); color: white;
+    padding: 0.25rem 0.75rem; border-radius: 9999px;
+    font-size: 0.75rem; font-weight: 600;
 }
 
-/* Métricas */
-.stMetric {
-    background: white;
-    padding: 15px;
-    border-radius: 10px;
-    box-shadow: 0 4px 15px rgba(0, 0, 0, 0.1);
+[data-testid="stSidebar"] {
+    background: linear-gradient(180deg, #1f2937 0%, #111827 100%);
 }
+[data-testid="stSidebar"] * { color: #f3f4f6; }
 
-/* Botões */
-.stButton > button {
-    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-    color: white;
-    border: none;
-    border-radius: 8px;
-    padding: 10px 24px;
-    font-weight: 600;
-    transition: all 0.3s ease;
-}
-
-.stButton > button:hover {
-    transform: translateY(-2px);
-    box-shadow: 0 6px 20px rgba(102, 126, 234, 0.4);
-}
-
-/* Sidebar */
-.css-1d391kg {
-    background: rgba(255, 255, 255, 0.98);
-}
-
-/* Inputs */
-.stTextInput > div > div > input,
-.stNumberInput > div > div > input {
-    border-radius: 8px;
-    border: 2px solid #e0e0e0;
-}
-
-/* Alertas personalizados */
-.success-box {
-    background: #d4edda;
-    border-left: 5px solid #28a745;
-    padding: 15px;
-    border-radius: 8px;
-    margin: 10px 0;
-}
-
-.warning-box {
-    background: #fff3cd;
-    border-left: 5px solid #ffc107;
-    padding: 15px;
-    border-radius: 8px;
-    margin: 10px 0;
-}
-
-/* Animações */
 @keyframes fadeIn {
     from { opacity: 0; transform: translateY(20px); }
     to { opacity: 1; transform: translateY(0); }
 }
-
-.css-1r6slb0 {
-    animation: fadeIn 0.5s ease-in;
-}
+.fade-in { animation: fadeIn 0.5s ease-out; }
