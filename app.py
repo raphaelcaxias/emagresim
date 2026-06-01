@@ -1,10 +1,28 @@
 import streamlit as st
 import logging
 import os
-import hashlib
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
+
+# Garante que session_state existe ANTES de qualquer import
+if "mock_db" not in st.session_state:
+    st.session_state.mock_db = {
+        "meals": [],
+        "weights": [],
+        "achievements": [],
+        "users": {
+            "demo@emagresim.com": {
+                "password": "demo123",
+                "name": "Usuário Demo",
+                "email": "demo@emagresim.com",
+                "is_demo": True
+            }
+        }
+    }
+
+if "user" not in st.session_state:
+    st.session_state.user = None
 
 try:
     from core.database import AppDatabase
@@ -21,7 +39,7 @@ except Exception as e:
     IMPORTS_OK = False
 
 st.set_page_config(
-    page_title="EmagreSim - Transforme sua jornada em um jogo!",
+    page_title="EmagreSim",
     page_icon="💪", 
     layout="wide", 
     initial_sidebar_state="expanded"
@@ -41,46 +59,18 @@ def init_services():
         st.error(f"Erro ao carregar serviços: {e}")
         return None
 
-def init_session_state():
-    """Inicializa TODAS as variáveis de sessão"""
-    if "user" not in st.session_state:
-        st.session_state.user = None
-    
-    if "mock_db" not in st.session_state:
-        st.session_state.mock_db = {
-            "meals": [],
-            "weights": [],
-            "achievements": [],
-            "users": {
-                "demo@emagresim.com": {
-                    "password": "demo123",
-                    "name": "Usuário Demo",
-                    "email": "demo@emagresim.com",
-                    "is_demo": True
-                }
-            }
-        }
-
 def main():
     if not IMPORTS_OK:
         st.stop()
     
-    init_session_state()
     services = init_services()
-    
     if not services:
-        st.error("Não foi possível inicializar os serviços.")
         st.stop()
     
     # Verifica se usuário está logado
     if st.session_state.user is None:
         # Tela de Login
-        if render_login(services["db"]):
-            # Após login bem-sucedido, verifica se é primeiro acesso
-            if st.session_state.user and not st.session_state.user.get("onboarded"):
-                st.rerun()
-            elif st.session_state.user:
-                st.rerun()
+        render_login(services["db"])
     else:
         # Usuário logado
         user = st.session_state.user
@@ -91,21 +81,19 @@ def main():
             <div style="text-align: center; margin-bottom: 2rem;">
                 <h2 style="margin: 0;">💪 EmagreSim</h2>
                 <p style="color: #9ca3af; font-size: 0.75rem;">v2.0</p>
-                <div style="margin-top: 1rem; padding: 0.5rem; background: #374151; border-radius: 8px;">
-                    <p style="margin: 0; font-size: 0.875rem;">👤 {user.get('name', 'Usuário')}</p>
-                    <p style="margin: 0; font-size: 0.75rem; color: #9ca3af;">{user.get('email', '')}</p>
-                </div>
             </div>
             """, unsafe_allow_html=True)
             
             plan_badge = "👑 PRO" if user.get("plan") != "free" else "🎁 GRÁTIS"
             plan_color = "#f59e0b" if user.get("plan") != "free" else "#6b7280"
             st.markdown(f"""
-            <div style="background: {plan_color}; color: white; padding: 0.5rem; border-radius: 12px; text-align: center; font-weight: 600;">
+            <div style="background: {plan_color}; color: white; padding: 0.5rem; border-radius: 12px; text-align: center; font-weight: 600; margin-bottom: 1rem;">
                 {plan_badge}
             </div>
             """, unsafe_allow_html=True)
             
+            st.markdown(f"👤 {user.get('name', 'Usuário')}")
+            st.markdown(f"📧 {user.get('email', '')}")
             st.markdown("---")
             
             if user.get("onboarded"):
