@@ -1,9 +1,68 @@
 import streamlit as st
+import random
+from datetime import datetime
 from core.nutrition import NutritionService
 from core.gamification import GamificationSystem
+from core.database import AppDatabase
+
+def get_random_message(category: str, db: AppDatabase) -> dict:
+    """Busca mensagem aleatória do banco ou fallback"""
+    if db.is_real and db.client:
+        try:
+            result = db.client.table("motivational_messages").select("*").eq("category", category).eq("is_active", True).execute()
+            if result.data:
+                return random.choice(result.data)
+        except:
+            pass
+    
+    # Fallback local
+    fallbacks = {
+        "login": [
+            {"message": "Que bom ter você de volta! 💪", "emoji": "👋"},
+            {"message": "Cada dia é uma nova chance.", "emoji": "🌱"},
+        ],
+        "streak": [
+            {"message": "Mais um dia registrado! 🔥", "emoji": ""},
+        ],
+        "meal": [
+            {"message": "Registro feito! Consciência em ação.", "emoji": "✅"},
+        ],
+    }
+    return random.choice(fallbacks.get(category, fallbacks["login"]))
+
+def get_daily_tip(db: AppDatabase) -> dict:
+    """Busca dica do dia"""
+    if db.is_real and db.client:
+        try:
+            result = db.client.table("daily_tips").select("*").eq("is_active", True).execute()
+            if result.data:
+                today = datetime.now().day
+                return result.data[today % len(result.data)]
+        except:
+            pass
+    
+    return {"tip": "Beba água ao acordar!", "emoji": "💧"}
+
+def get_welcome_message() -> str:
+    """Mensagem baseada no horário"""
+    hour = datetime.now().hour
+    if hour < 12:
+        return "☀️ Bom dia! Um novo dia, novas oportunidades."
+    elif hour < 18:
+        return "🌤️ Boa tarde! Que tal revisar suas metas?"
+    else:
+        return "🌙 Boa noite! Reflita sobre suas conquistas."
 
 def render_dashboard(nutrition: NutritionService, gamification: GamificationSystem, user: dict):
     st.markdown('<div class="fade-in">', unsafe_allow_html=True)
+    
+    # Mensagem de boas-vindas dinâmica
+    st.info(get_welcome_message())
+    
+    # Dica do dia
+    tip = get_daily_tip(nutrition.db)
+    st.success(f"{tip.get('emoji', '💡')} {tip.get('tip', 'Dica do dia')}")
+    
     today_summary = nutrition.get_daily_summary()
     
     w = user.get("current_weight") or 70.0
@@ -15,7 +74,12 @@ def render_dashboard(nutrition: NutritionService, gamification: GamificationSyst
     remaining = daily_goal - today_summary["calories"]
     streak = gamification.calculate_streak()
     
-    gamification.check_achievements(today_summary["count"], streak)
+    # Verifica conquistas e mostra mensagem
+    unlocked = gamification.check_achievements(today_summary["count"], streak)
+    if unlocked:
+        for achievement in unlocked:
+            msg = get_random_message("achievement", nutrition.db)
+            st.success(f"🏆 {achievement} - {msg.get('message', '')} {msg.get('emoji', '')}")
     
     col1, col2, col3, col4 = st.columns(4)
     with col1: 
