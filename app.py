@@ -7,11 +7,9 @@ from core.analytics import AnalyticsService
 from core.gamification import GamificationSystem
 from core.payments import PaymentService
 
-# Configuração de logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
 
-# Configuração da página
 st.set_page_config(
     page_title="EmagreSim - Sua Jornada Fitness",
     page_icon="💪",
@@ -24,7 +22,6 @@ st.set_page_config(
     }
 )
 
-# CSS inline profissional
 st.markdown("""
 <style>
     .fade-in { animation: fadeIn 0.3s ease-in; }
@@ -78,24 +75,24 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
+
 def load_css_file():
-    """Carrega CSS externo se existir"""
     try:
         with open("assets/style.css") as f:
             st.markdown(f"<style>{f.read()}</style>", unsafe_allow_html=True)
     except:
         pass
 
+
 def init_session_state():
-    """Inicializa estado global"""
     if "user" not in st.session_state:
         st.session_state.user = None
     if "page" not in st.session_state:
         st.session_state.page = "home"
 
+
 @st.cache_resource(show_spinner="Inicializando serviços...")
 def init_services():
-    """Inicializa todos os serviços"""
     try:
         db = AppDatabase()
         return {
@@ -109,8 +106,46 @@ def init_services():
         logger.error(f"❌ Erro fatal na inicialização: {e}")
         return None
 
+
+def get_daily_summary_safe(nutrition_service):
+    """Retorna summary diário de forma segura (compatível com várias estruturas)"""
+    try:
+        summary = nutrition_service.get_daily_summary()
+        if not summary:
+            return {"calories": 0, "count": 0, "meals": [], "proteins": 0, "carbs": 0, "fats": 0}
+        
+        # Normaliza chaves possíveis (calories ou cal)
+        calories = summary.get("calories", summary.get("cal", 0))
+        count = summary.get("count", 0)
+        meals = summary.get("meals", [])
+        proteins = summary.get("proteins", summary.get("p", 0))
+        carbs = summary.get("carbs", summary.get("c", 0))
+        fats = summary.get("fats", summary.get("g", 0))
+        
+        return {
+            "calories": int(calories) if calories else 0,
+            "count": int(count) if count else 0,
+            "meals": meals or [],
+            "proteins": float(proteins) if proteins else 0,
+            "carbs": float(carbs) if carbs else 0,
+            "fats": float(fats) if fats else 0,
+        }
+    except Exception as e:
+        logger.error(f"Erro em get_daily_summary_safe: {e}")
+        return {"calories": 0, "count": 0, "meals": [], "proteins": 0, "carbs": 0, "fats": 0}
+
+
+def get_streak_safe(gamification_service):
+    """Retorna streak de forma segura"""
+    try:
+        streak = gamification_service.calculate_streak()
+        return int(streak) if streak else 0
+    except Exception as e:
+        logger.error(f"Erro em get_streak_safe: {e}")
+        return 0
+
+
 def get_welcome_message() -> str:
-    """Retorna saudação baseada no horário"""
     hour = datetime.now().hour
     if hour < 6:
         return "🌙 Boa madrugada! Descanso é importante."
@@ -121,16 +156,15 @@ def get_welcome_message() -> str:
     else:
         return "🌙 Boa noite! Revise suas conquistas!"
 
+
 def check_onboarding_complete(user: dict) -> bool:
-    """Verifica se usuário completou onboarding"""
     required_fields = ["current_weight", "height", "age", "goal_weight"]
     return all(user.get(field) is not None for field in required_fields)
 
+
 def render_login_page(services: dict):
-    """Renderiza página de login/cadastro"""
     st.markdown('<div class="fade-in">', unsafe_allow_html=True)
     
-    # Header profissional
     st.markdown("""
     <div class="main-header" style="text-align: center;">
         <h1 style="margin: 0; font-size: 3rem;">💪 EmagreSim</h1>
@@ -156,21 +190,17 @@ def render_login_page(services: dict):
                     if user_data:
                         st.session_state.user = user_data
                         st.success(f"Bem-vindo, {user_data.get('name', 'Usuário')}!")
-                        logger.info(f"Login bem-sucedido: {email}")
                         st.rerun()
                     else:
                         st.error("Email ou senha incorretos.")
-                        logger.warning(f"Tentativa de login falhou: {email}")
                 except Exception as e:
                     logger.error(f"Erro no login: {e}")
                     st.error(f"Erro ao fazer login: {str(e)}")
         
         st.markdown("---")
         
-        # Modo Demo - Criação direta no session_state
         if st.button("🎮 Entrar no Modo Demonstração", use_container_width=True):
             try:
-                # Cria usuário demo diretamente
                 demo_user = {
                     "email": "demo@emagresim.com",
                     "password": "demo",
@@ -184,22 +214,16 @@ def render_login_page(services: dict):
                     "goal": "lose"
                 }
                 
-                # Garante que mock_db existe
                 if "mock_db" not in st.session_state:
                     st.session_state.mock_db = {"users": {}, "meals": [], "weights": [], "achievements": []}
                 if "users" not in st.session_state.mock_db:
                     st.session_state.mock_db["users"] = {}
                 
-                # Adiciona ao mock_db
                 st.session_state.mock_db["users"]["demo@emagresim.com"] = demo_user
-                
-                # Loga o usuário
                 st.session_state.user = demo_user
                 
                 st.success("✅ Modo demonstração ativado!")
-                logger.info("Modo demonstração ativado")
                 st.rerun()
-            
             except Exception as e:
                 logger.error(f"Erro no modo demo: {e}")
                 st.error(f"Erro ao ativar modo demo: {str(e)}")
@@ -227,14 +251,12 @@ def render_login_page(services: dict):
                 try:
                     if services["db"].create_user(new_email, new_password, new_name):
                         st.success("✅ Conta criada! Faça login agora.")
-                        logger.info(f"Nova conta criada: {new_email}")
                     else:
                         st.error("❌ Email já cadastrado.")
                 except Exception as e:
                     logger.error(f"Erro no cadastro: {e}")
                     st.error(f"Erro ao criar conta: {str(e)}")
     
-    # Footer
     st.markdown("---")
     st.markdown("""
     <div style="text-align: center; color: #64748b; font-size: 0.85rem;">
@@ -242,13 +264,11 @@ def render_login_page(services: dict):
         <p>EmagreSim v2.0 • Monitoramento baseado em evidências</p>
     </div>
     """, unsafe_allow_html=True)
-    
     st.markdown('</div>', unsafe_allow_html=True)
 
+
 def render_sidebar(user: dict, services: dict):
-    """Renderiza sidebar profissional"""
     with st.sidebar:
-        # Header
         st.markdown("""
         <div style="text-align: center; padding: 1rem 0; border-bottom: 1px solid #334155; margin-bottom: 1.5rem;">
             <h2 style="margin: 0; color: #06b6d4;">💪 EmagreSim</h2>
@@ -256,28 +276,28 @@ def render_sidebar(user: dict, services: dict):
         </div>
         """, unsafe_allow_html=True)
         
-        # Badge de plano
         plan = user.get("plan", "free")
         if plan == "pro":
             st.markdown('<div style="background: linear-gradient(135deg, #f59e0b, #ef4444); color: white; padding: 0.5rem; border-radius: 8px; text-align: center; font-weight: 600; margin-bottom: 1rem;">👑 PLANO PRO</div>', unsafe_allow_html=True)
         else:
             st.markdown('<div style="background: #334155; color: #94a3b8; padding: 0.5rem; border-radius: 8px; text-align: center; font-weight: 600; margin-bottom: 1rem;">🎁 GRATUITO</div>', unsafe_allow_html=True)
         
-        # Info do usuário
         st.markdown(f"**👤 {user.get('name', 'Usuário')}**")
         st.caption(f"📧 {user.get('email', '')}")
         
-        # Stats rápidos
-        today_summary = services["nutrition"].get_daily_summary()
-        streak = services["gamification"].calculate_streak()
+        # ✅ CORREÇÃO: Uso de funções seguras
+        today_summary = get_daily_summary_safe(services["nutrition"])
+        streak = get_streak_safe(services["gamification"])
+        
+        calories = today_summary.get("calories", 0)
+        count = today_summary.get("count", 0)
         
         st.markdown("---")
         st.markdown("**📊 Resumo de Hoje**")
-        st.metric("🔥 Calorias", f"{today_summary['calories']} kcal")
-        st.metric("📝 Refeições", today_summary['count'])
+        st.metric("🔥 Calorias", f"{calories} kcal")
+        st.metric("📝 Refeições", count)
         st.metric("🔥 Sequência", f"{streak} dias")
         
-        # Navegação
         st.markdown("---")
         st.markdown("**🧭 Navegação**")
         
@@ -295,21 +315,18 @@ def render_sidebar(user: dict, services: dict):
                 st.session_state.page = page_key
                 st.rerun()
         
-        # Logout
         st.markdown("---")
         if st.button("🚪 Sair", use_container_width=True):
             st.session_state.user = None
             st.session_state.page = "home"
-            st.success("Até logo!")
             st.rerun()
         
         st.markdown('<div style="text-align: center; font-size: 0.7rem; color: #64748b; margin-top: 1rem;">EmagreSim © 2024</div>', unsafe_allow_html=True)
 
+
 def render_home_page(user: dict, services: dict):
-    """Renderiza página inicial pós-login"""
     st.markdown('<div class="fade-in">', unsafe_allow_html=True)
     
-    # Header com saudação
     st.markdown(f"""
     <div class="main-header">
         <h1 style="margin: 0;">{get_welcome_message()}</h1>
@@ -317,26 +334,28 @@ def render_home_page(user: dict, services: dict):
     </div>
     """, unsafe_allow_html=True)
     
-    # Verifica onboarding
     if not check_onboarding_complete(user):
         st.warning("⚠️ Complete seu perfil para uma experiência personalizada!")
         if st.button("Completar Perfil Agora", use_container_width=True, type="primary"):
             st.session_state.page = "profile"
             st.rerun()
     
-    # Cards de resumo
-    today_summary = services["nutrition"].get_daily_summary()
-    streak = services["gamification"].calculate_streak()
+    # ✅ CORREÇÃO: Uso de função segura
+    today_summary = get_daily_summary_safe(services["nutrition"])
+    streak = get_streak_safe(services["gamification"])
+    
     w = user.get("current_weight") or 70.0
     goal = user.get("goal_weight") or 65.0
     
     st.markdown("### 📊 Seu Progresso")
     col1, col2, col3, col4 = st.columns(4)
     
+    calories = today_summary.get("calories", 0)
+    
     with col1:
         st.markdown(f"""
         <div class="data-card">
-            <div class="data-value">{today_summary['calories']}</div>
+            <div class="data-value">{calories}</div>
             <div class="data-label">🔥 Calorias Hoje</div>
         </div>
         """, unsafe_allow_html=True)
@@ -366,36 +385,38 @@ def render_home_page(user: dict, services: dict):
         </div>
         """, unsafe_allow_html=True)
     
-    # Barra de progresso
-    tmb = services["nutrition"].calculate_tmb(
-        weight=float(w),
-        height=float(user.get("height", 170)),
-        age=int(user.get("age", 30))
-    )
-    daily_goal = services["nutrition"].calculate_daily_goal(
-        tmb, 
-        user.get("activity_level", "moderate"), 
-        user.get("goal", "lose")
-    )
-    
-    percent = min(100, int((today_summary['calories'] / daily_goal) * 100)) if daily_goal > 0 else 0
-    
-    st.markdown(f"""
-    <div style="margin: 1.5rem 0;">
-        <div style="display: flex; justify-content: space-between; margin-bottom: 0.5rem;">
-            <span style="font-weight: 600;">Progresso da Meta Diária</span>
-            <span style="color: {'#10b981' if percent <= 100 else '#ef4444'}; font-weight: 600;">{percent}%</span>
+    # Barra de progresso com proteção
+    try:
+        tmb = services["nutrition"].calculate_tmb(
+            weight=float(w),
+            height=float(user.get("height", 170)),
+            age=int(user.get("age", 30))
+        )
+        daily_goal = services["nutrition"].calculate_daily_goal(
+            tmb, 
+            user.get("activity_level", "moderate"), 
+            user.get("goal", "lose")
+        )
+        percent = min(100, int((calories / daily_goal) * 100)) if daily_goal > 0 else 0
+        
+        st.markdown(f"""
+        <div style="margin: 1.5rem 0;">
+            <div style="display: flex; justify-content: space-between; margin-bottom: 0.5rem;">
+                <span style="font-weight: 600;">Progresso da Meta Diária</span>
+                <span style="color: {'#10b981' if percent <= 100 else '#ef4444'}; font-weight: 600;">{percent}%</span>
+            </div>
+            <div class="progress-container">
+                <div class="progress-bar" style="width: {percent}%; background: {'linear-gradient(90deg, #10b981, #34d399)' if percent <= 100 else 'linear-gradient(90deg, #ef4444, #f87171)'}"></div>
+            </div>
+            <div style="font-size: 0.85rem; color: #64748b; margin-top: 0.5rem;">
+                Meta: {daily_goal} kcal • Consumidas: {calories} kcal • Restam: {max(0, daily_goal - calories)} kcal
+            </div>
         </div>
-        <div class="progress-container">
-            <div class="progress-bar" style="width: {percent}%; background: {'linear-gradient(90deg, #10b981, #34d399)' if percent <= 100 else 'linear-gradient(90deg, #ef4444, #f87171)'}"></div>
-        </div>
-        <div style="font-size: 0.85rem; color: #64748b; margin-top: 0.5rem;">
-            Meta: {daily_goal} kcal • Consumidas: {today_summary['calories']} kcal • Restam: {max(0, daily_goal - today_summary['calories'])} kcal
-        </div>
-    </div>
-    """, unsafe_allow_html=True)
+        """, unsafe_allow_html=True)
+    except Exception as e:
+        logger.error(f"Erro ao calcular meta: {e}")
+        st.info(f"Meta diária: Configure seu perfil para ver o progresso.")
     
-    # Call to action
     st.markdown("---")
     col1, col2, col3 = st.columns(3)
     with col1:
@@ -413,8 +434,8 @@ def render_home_page(user: dict, services: dict):
     
     st.markdown('</div>', unsafe_allow_html=True)
 
+
 def main():
-    """Função principal"""
     load_css_file()
     init_session_state()
     
@@ -423,28 +444,41 @@ def main():
         st.error("❌ Falha ao inicializar o sistema. Recarregue a página.")
         st.stop()
     
-    # Verifica se está logado
     if st.session_state.user is None:
         render_login_page(services)
         return
     
-    # Usuário logado
     user = st.session_state.user
     render_sidebar(user, services)
     
-    # Roteamento
     if st.session_state.page == "home":
         render_home_page(user, services)
     elif st.session_state.page == "dashboard":
-        st.switch_page("pages/01_Dashboard.py")
+        try:
+            st.switch_page("pages/01_Dashboard.py")
+        except:
+            st.info("Página Dashboard em construção.")
     elif st.session_state.page == "meals":
-        st.switch_page("pages/02_Refeições.py")
+        try:
+            st.switch_page("pages/02_Refeições.py")
+        except:
+            st.info("Página Refeições em construção.")
     elif st.session_state.page == "weight":
-        st.switch_page("pages/03_Peso.py")
+        try:
+            st.switch_page("pages/03_Peso.py")
+        except:
+            st.info("Página Peso em construção.")
     elif st.session_state.page == "stats":
-        st.switch_page("pages/04_Análise_Estatística.py")
+        try:
+            st.switch_page("pages/04_Análise_Estatística.py")
+        except:
+            st.info("Página Análise em construção.")
     elif st.session_state.page == "profile":
-        st.switch_page("pages/05_Perfil.py")
+        try:
+            st.switch_page("pages/05_Perfil.py")
+        except:
+            st.info("Página Perfil em construção.")
+
 
 if __name__ == "__main__":
     main()
