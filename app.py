@@ -24,7 +24,7 @@ st.set_page_config(
     }
 )
 
-# CSS inline para carregamento rápido
+# CSS inline profissional
 st.markdown("""
 <style>
     .fade-in { animation: fadeIn 0.3s ease-in; }
@@ -57,7 +57,6 @@ st.markdown("""
         border-radius: 8px !important; 
         font-weight: 600 !important; 
         transition: all 0.2s ease !important;
-        border: none !important;
     }
     .stButton > button:hover { transform: translateY(-1px); box-shadow: 0 4px 6px rgba(0,0,0,0.1); }
     
@@ -88,26 +87,17 @@ def load_css_file():
         pass
 
 def init_session_state():
-    """Inicializa estado global da aplicação"""
+    """Inicializa estado global"""
     if "user" not in st.session_state:
         st.session_state.user = None
     if "page" not in st.session_state:
         st.session_state.page = "home"
-    if "last_activity" not in st.session_state:
-        st.session_state.last_activity = datetime.now()
 
 @st.cache_resource(show_spinner="Inicializando serviços...")
 def init_services():
-    """Inicializa todos os serviços com cache"""
+    """Inicializa todos os serviços"""
     try:
         db = AppDatabase()
-        
-        # Verifica conexão com Supabase
-        if db.is_real:
-            logger.info("✅ Conectado ao Supabase")
-        else:
-            logger.warning("⚠️ Modo Mock - Sem conexão Supabase")
-        
         return {
             "db": db,
             "nutrition": NutritionService(db),
@@ -157,12 +147,11 @@ def render_login_page(services: dict):
         email = st.text_input("Email", key="login_email", placeholder="seu@email.com")
         password = st.text_input("Senha", type="password", key="login_pass", placeholder="••••••••")
         
-        col1, col2 = st.columns([2, 1])
-        with col1:
-            if st.button("Entrar", use_container_width=True, type="primary"):
-                if not email or not password:
-                    st.error("Preencha email e senha.")
-                else:
+        if st.button("Entrar", use_container_width=True, type="primary"):
+            if not email or not password:
+                st.error("Preencha email e senha.")
+            else:
+                try:
                     user_data = services["db"].get_user(email, password)
                     if user_data:
                         st.session_state.user = user_data
@@ -172,22 +161,48 @@ def render_login_page(services: dict):
                     else:
                         st.error("Email ou senha incorretos.")
                         logger.warning(f"Tentativa de login falhou: {email}")
+                except Exception as e:
+                    logger.error(f"Erro no login: {e}")
+                    st.error(f"Erro ao fazer login: {str(e)}")
         
-        with col2:
-            if st.button("🎮 Modo Demo", use_container_width=True):
-                # Garante que usuário demo existe
-                demo_user = services["db"].get_user("demo@emagresim.com", "demo")
-                if demo_user is None:
-                    services["db"].create_user("demo@emagresim.com", "demo", "Usuário Demo")
-                    demo_user = services["db"].get_user("demo@emagresim.com", "demo")
+        st.markdown("---")
+        
+        # Modo Demo - Criação direta no session_state
+        if st.button("🎮 Entrar no Modo Demonstração", use_container_width=True):
+            try:
+                # Cria usuário demo diretamente
+                demo_user = {
+                    "email": "demo@emagresim.com",
+                    "password": "demo",
+                    "name": "Usuário Demo",
+                    "plan": "free",
+                    "current_weight": 75.0,
+                    "goal_weight": 70.0,
+                    "height": 170,
+                    "age": 30,
+                    "activity_level": "moderate",
+                    "goal": "lose"
+                }
                 
-                if demo_user:
-                    st.session_state.user = demo_user
-                    st.success("Modo demonstração ativado!")
-                    logger.info("Modo demonstração ativado")
-                    st.rerun()
-                else:
-                    st.error("Erro ao ativar modo demo.")
+                # Garante que mock_db existe
+                if "mock_db" not in st.session_state:
+                    st.session_state.mock_db = {"users": {}, "meals": [], "weights": [], "achievements": []}
+                if "users" not in st.session_state.mock_db:
+                    st.session_state.mock_db["users"] = {}
+                
+                # Adiciona ao mock_db
+                st.session_state.mock_db["users"]["demo@emagresim.com"] = demo_user
+                
+                # Loga o usuário
+                st.session_state.user = demo_user
+                
+                st.success("✅ Modo demonstração ativado!")
+                logger.info("Modo demonstração ativado")
+                st.rerun()
+            
+            except Exception as e:
+                logger.error(f"Erro no modo demo: {e}")
+                st.error(f"Erro ao ativar modo demo: {str(e)}")
     
     with tab2:
         st.markdown("### Nova Conta")
@@ -209,11 +224,15 @@ def render_login_page(services: dict):
             elif "@" not in new_email:
                 st.error("Email inválido.")
             else:
-                if services["db"].create_user(new_email, new_password, new_name):
-                    st.success("✅ Conta criada! Faça login agora.")
-                    logger.info(f"Nova conta criada: {new_email}")
-                else:
-                    st.error("❌ Email já cadastrado.")
+                try:
+                    if services["db"].create_user(new_email, new_password, new_name):
+                        st.success("✅ Conta criada! Faça login agora.")
+                        logger.info(f"Nova conta criada: {new_email}")
+                    else:
+                        st.error("❌ Email já cadastrado.")
+                except Exception as e:
+                    logger.error(f"Erro no cadastro: {e}")
+                    st.error(f"Erro ao criar conta: {str(e)}")
     
     # Footer
     st.markdown("---")
@@ -229,7 +248,7 @@ def render_login_page(services: dict):
 def render_sidebar(user: dict, services: dict):
     """Renderiza sidebar profissional"""
     with st.sidebar:
-        # Header da sidebar
+        # Header
         st.markdown("""
         <div style="text-align: center; padding: 1rem 0; border-bottom: 1px solid #334155; margin-bottom: 1.5rem;">
             <h2 style="margin: 0; color: #06b6d4;">💪 EmagreSim</h2>
@@ -244,7 +263,7 @@ def render_sidebar(user: dict, services: dict):
         else:
             st.markdown('<div style="background: #334155; color: #94a3b8; padding: 0.5rem; border-radius: 8px; text-align: center; font-weight: 600; margin-bottom: 1rem;">🎁 GRATUITO</div>', unsafe_allow_html=True)
         
-        # Informações do usuário
+        # Info do usuário
         st.markdown(f"**👤 {user.get('name', 'Usuário')}**")
         st.caption(f"📧 {user.get('email', '')}")
         
@@ -276,7 +295,7 @@ def render_sidebar(user: dict, services: dict):
                 st.session_state.page = page_key
                 st.rerun()
         
-        # Footer da sidebar
+        # Logout
         st.markdown("---")
         if st.button("🚪 Sair", use_container_width=True):
             st.session_state.user = None
@@ -290,7 +309,7 @@ def render_home_page(user: dict, services: dict):
     """Renderiza página inicial pós-login"""
     st.markdown('<div class="fade-in">', unsafe_allow_html=True)
     
-    # Header com saudação dinâmica
+    # Header com saudação
     st.markdown(f"""
     <div class="main-header">
         <h1 style="margin: 0;">{get_welcome_message()}</h1>
@@ -365,7 +384,7 @@ def render_home_page(user: dict, services: dict):
     <div style="margin: 1.5rem 0;">
         <div style="display: flex; justify-content: space-between; margin-bottom: 0.5rem;">
             <span style="font-weight: 600;">Progresso da Meta Diária</span>
-            <span style="color: { '#10b981' if percent <= 100 else '#ef4444'}; font-weight: 600;">{percent}%</span>
+            <span style="color: {'#10b981' if percent <= 100 else '#ef4444'}; font-weight: 600;">{percent}%</span>
         </div>
         <div class="progress-container">
             <div class="progress-bar" style="width: {percent}%; background: {'linear-gradient(90deg, #10b981, #34d399)' if percent <= 100 else 'linear-gradient(90deg, #ef4444, #f87171)'}"></div>
@@ -375,23 +394,6 @@ def render_home_page(user: dict, services: dict):
         </div>
     </div>
     """, unsafe_allow_html=True)
-    
-    # Dicas rápidas
-    st.markdown("---")
-    st.markdown("### 💡 Dica do Dia")
-    
-    # Busca dica do banco ou usa fallback
-    if services["db"].is_real and services["db"].client:
-        try:
-            result = services["db"].client.table("daily_tips").select("*").eq("is_active", True).execute()
-            if result.data:
-                import random
-                tip = random.choice(result.data)
-                st.info(f"{tip.get('emoji', '💡')} {tip.get('tip', 'Dica do dia')}")
-        except:
-            pass
-    
-    st.info("💧 Beba um copo de água antes de cada refeição para aumentar a saciedade.")
     
     # Call to action
     st.markdown("---")
@@ -412,7 +414,7 @@ def render_home_page(user: dict, services: dict):
     st.markdown('</div>', unsafe_allow_html=True)
 
 def main():
-    """Função principal da aplicação"""
+    """Função principal"""
     load_css_file()
     init_session_state()
     
@@ -430,7 +432,7 @@ def main():
     user = st.session_state.user
     render_sidebar(user, services)
     
-    # Roteamento de páginas
+    # Roteamento
     if st.session_state.page == "home":
         render_home_page(user, services)
     elif st.session_state.page == "dashboard":
