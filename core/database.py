@@ -55,7 +55,9 @@ class AppDatabase:
                     return user.user.id
             except:
                 pass
-        return st.session_state.user.get("email") if st.session_state.get("user") else "anonymous"
+        if st.session_state.get("user"):
+            return st.session_state.user.get("email", "anonymous")
+        return "anonymous"
 
     # ========== AUTENTICAÇÃO ==========
     
