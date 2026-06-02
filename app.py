@@ -280,7 +280,7 @@ def render_sidebar(user: dict, services: dict):
         if plan == "pro":
             st.markdown('<div style="background: linear-gradient(135deg, #f59e0b, #ef4444); color: white; padding: 0.5rem; border-radius: 8px; text-align: center; font-weight: 600; margin-bottom: 1rem;">👑 PLANO PRO</div>', unsafe_allow_html=True)
         else:
-            st.markdown('<div style="background: #334155; color: #94a3b8; padding: 0.5rem; border-radius: 8px; text-align: center; font-weight: 600; margin-bottom: 1rem;">🎁 GRATUITO</div>', unsafe_allow_html=True)
+            st.markdown('<div style="background: #334155; color: #94a3b8; padding: 0.5rem; border-radius: 8px; text-align: center; font-weight: 600; margin-bottom: 1rem;"> GRATUITO</div>', unsafe_allow_html=True)
         
         st.markdown(f"**👤 {user.get('name', 'Usuário')}**")
         st.caption(f"📧 {user.get('email', '')}")
@@ -302,10 +302,10 @@ def render_sidebar(user: dict, services: dict):
         st.markdown("**🧭 Navegação**")
         
         pages = {
-            "🏠 Início": "home",
-            "📊 Dashboard": "dashboard",
+            " Início": "home",
+            " Dashboard": "dashboard",
             "🍴 Registro Alimentar": "meals",
-            "⚖️ Evolução Peso": "weight",
+            "️ Evolução Peso": "weight",
             "📈 Análise Estatística": "stats",
             "👤 Perfil": "profile"
         }
@@ -424,7 +424,7 @@ def render_home_page(user: dict, services: dict):
             st.session_state.page = "meals"
             st.rerun()
     with col2:
-        if st.button("⚖️ Registrar Peso", use_container_width=True):
+        if st.button("️ Registrar Peso", use_container_width=True):
             st.session_state.page = "weight"
             st.rerun()
     with col3:
@@ -457,27 +457,27 @@ def main():
         try:
             st.switch_page("pages/01_Dashboard.py")
         except:
-            st.info("Página Dashboard em construção.")
+            st.info("📊 Página Dashboard em construção.")
     elif st.session_state.page == "meals":
         try:
             st.switch_page("pages/02_Refeições.py")
         except:
-            st.info("Página Refeições em construção.")
+            st.info("🍴 Página Refeições em construção.")
     elif st.session_state.page == "weight":
         try:
             st.switch_page("pages/03_Peso.py")
         except:
-            st.info("Página Peso em construção.")
+            st.info("⚖️ Página Peso em construção.")
     elif st.session_state.page == "stats":
         try:
             st.switch_page("pages/04_Análise_Estatística.py")
         except:
-            st.info("Página Análise em construção.")
+            st.info(" Página Análise em construção.")
     elif st.session_state.page == "profile":
         try:
             st.switch_page("pages/05_Perfil.py")
         except:
-            st.info("Página Perfil em construção.")
+            st.info("👤 Página Perfil em construção.")
 
 
 if __name__ == "__main__":
