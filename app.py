@@ -65,11 +65,13 @@ def init_session_state():
 init_session_state()
 
 # ============================================================
-# 4. BANCO DE DADOS (Fallback Seguro)
+# 4. BANCO DE DADOS (AppDatabase - Mock Fallback)
 # ============================================================
 try:
     from core.database import AppDatabase
-except Exception:
+    logger.info("✅ core/database.py carregado")
+except Exception as e:
+    logger.warning(f"core/database.py não encontrado, usando fallback: {e}")
     class AppDatabase:
         def __init__(self):
             self.is_real = False
@@ -135,66 +137,82 @@ except Exception:
             return [a for a in st.session_state.mock_db.get("achievements", []) if a.get("user_id") == uid]
 
 # ============================================================
-# 5. BANCO DE ALIMENTOS (FOOD DB + FOOD SERVICE)
+# 5. FOOD SERVICE - ÚNICA FONTE DE VERDADE (Supabase)
 # ============================================================
-try:
-    from utils.food_db import FOOD_DB
-except Exception:
-    FOOD_DB = {
-        "arroz_branco": {"name": "Arroz Branco", "category": "almoco_jantar", "calories": 130, "protein": 2.5, "carbs": 28, "fat": 0.3, "fiber": 1.5, "portion": "100g"},
-        "feijao_preto": {"name": "Feijão Preto", "category": "almoco_jantar", "calories": 77, "protein": 4.5, "carbs": 14, "fat": 0.5, "fiber": 8.5, "portion": "100g"},
-        "peito_frango": {"name": "Peito de Frango Grelhado", "category": "almoco_jantar", "calories": 160, "protein": 32, "carbs": 0, "fat": 3.5, "fiber": 0, "portion": "100g"},
-        "banana_prata": {"name": "Banana Prata", "category": "frutas", "calories": 90, "protein": 1.5, "carbs": 23, "fat": 0.2, "fiber": 2, "portion": "1 unidade"},
-        "ovo_cozido": {"name": "Ovo Cozido", "category": "cafe_manha", "calories": 145, "protein": 13, "carbs": 1.5, "fat": 9.5, "fiber": 0, "portion": "1 unidade"},
-        "pao_frances": {"name": "Pão Francês", "category": "cafe_manha", "calories": 300, "protein": 8, "carbs": 58, "fat": 3, "fiber": 2.5, "portion": "1 unidade"},
-        "leite_integral": {"name": "Leite Integral", "category": "cafe_manha", "calories": 60, "protein": 3, "carbs": 4.5, "fat": 3.3, "fiber": 0, "portion": "100ml"},
-        "maca": {"name": "Maçã", "category": "frutas", "calories": 55, "protein": 0.3, "carbs": 14, "fat": 0.2, "fiber": 2.5, "portion": "1 unidade"},
-        "alface": {"name": "Alface", "category": "almoco_jantar", "calories": 15, "protein": 1.4, "carbs": 2.9, "fat": 0.2, "fiber": 1.5, "portion": "100g"},
-        "batata_doce": {"name": "Batata Doce", "category": "almoco_jantar", "calories": 77, "protein": 0.6, "carbs": 18, "fat": 0.1, "fiber": 2.2, "portion": "100g"},
-    }
+# Apenas 8 alimentos de fallback para quando o Supabase estiver offline
+FALLBACK_FOODS = {
+    "arroz_branco": {"name": "Arroz Branco", "category": "almoco_jantar", "calories": 130, "protein": 2.5, "carbs": 28, "fat": 0.3, "fiber": 1.5, "portion": "100g"},
+    "feijao_preto": {"name": "Feijão Preto", "category": "almoco_jantar", "calories": 77, "protein": 4.5, "carbs": 14, "fat": 0.5, "fiber": 8.5, "portion": "100g"},
+    "peito_frango": {"name": "Peito de Frango Grelhado", "category": "almoco_jantar", "calories": 160, "protein": 32, "carbs": 0, "fat": 3.5, "fiber": 0, "portion": "100g"},
+    "banana_prata": {"name": "Banana Prata", "category": "frutas", "calories": 90, "protein": 1.5, "carbs": 23, "fat": 0.2, "fiber": 2, "portion": "1 unidade"},
+    "ovo_cozido": {"name": "Ovo Cozido", "category": "cafe_manha", "calories": 145, "protein": 13, "carbs": 1.5, "fat": 9.5, "fiber": 0, "portion": "1 unidade"},
+    "pao_frances": {"name": "Pão Francês", "category": "cafe_manha", "calories": 300, "protein": 8, "carbs": 58, "fat": 3, "fiber": 2.5, "portion": "1 unidade"},
+    "leite_integral": {"name": "Leite Integral", "category": "cafe_manha", "calories": 60, "protein": 3, "carbs": 4.5, "fat": 3.3, "fiber": 0, "portion": "100ml"},
+    "alface": {"name": "Alface", "category": "almoco_jantar", "calories": 15, "protein": 1.4, "carbs": 2.9, "fat": 0.2, "fiber": 1.5, "portion": "100g"},
+}
 
 class FoodService:
-    """Serviço de alimentos com fallback local."""
+    """Serviço de alimentos - busca do Supabase, fallback local mínimo."""
+    
     def __init__(self, supabase_client=None):
         self.client = supabase_client
-        
+        self.use_supabase = supabase_client is not None
+        if self.use_supabase:
+            logger.info("✅ FoodService: Supabase conectado (200+ alimentos)")
+        else:
+            logger.warning("⚠️ FoodService: Usando fallback local (8 alimentos básicos)")
+    
     def get_categories(self):
-        if self.client:
+        """Retorna categorias de refeição."""
+        if self.use_supabase:
             try:
                 res = self.client.table("meal_categories").select("*").order("display_order").execute()
-                return res.data or []
-            except Exception: pass
+                if res.data: return res.data
+            except Exception as e:
+                logger.warning(f"Erro ao buscar categorias do Supabase: {e}")
+        
+        # Fallback local
         return [
             {"name": "Café da Manhã", "code": "cafe_manha", "icon": "☕"},
             {"name": "Almoço", "code": "almoco_jantar", "icon": "🍴"},
-            {"name": "Lanche", "code": "lanche", "icon": "🥪"},
-            {"name": "Jantar", "code": "almoco_jantar", "icon": ""},
+            {"name": "Lanche da Tarde", "code": "lanche", "icon": ""},
+            {"name": "Jantar", "code": "almoco_jantar", "icon": "🍽️"},
             {"name": "Ceia", "code": "ceia", "icon": "🌃"},
         ]
 
     def get_foods_by_category(self, category_code):
-        if self.client:
+        """Busca alimentos por categoria (Supabase ou fallback)."""
+        if self.use_supabase:
             try:
+                # Busca pelo código da categoria (relacionado via category.code)
+                res = self.client.rpc("get_foods_by_category", {"cat_code": category_code}).execute()
+                if res.data: return res.data
+                
+                # Fallback: busca direta na tabela foods
                 res = self.client.table("foods").select("*").eq("category_code", category_code).eq("is_active", True).execute()
-                return res.data or []
-            except Exception: pass
+                if res.data: return res.data
+            except Exception as e:
+                logger.warning(f"Erro ao buscar alimentos do Supabase: {e}")
         
-        # Fallback local
-        return [v for v in FOOD_DB.values() if v.get("category") == category_code]
+        # Fallback local - apenas 8 alimentos básicos
+        return [v for v in FALLBACK_FOODS.values() if v.get("category") == category_code]
 
     def search_foods(self, term, category_code=None):
-        if self.client and term:
+        """Busca alimentos por nome."""
+        if self.use_supabase and term:
             try:
                 query = self.client.table("foods").select("*").ilike("name", f"%{term}%").eq("is_active", True)
-                if category_code: query = query.eq("category_code", category_code)
-                res = query.execute()
-                return res.data or []
-            except Exception: pass
-            
+                if category_code:
+                    query = query.eq("category_code", category_code)
+                res = query.limit(20).execute()
+                if res.data: return res.data
+            except Exception as e:
+                logger.warning(f"Erro na busca Supabase: {e}")
+        
         # Fallback local
-        term = term.lower()
+        term = term.lower() if term else ""
         foods = []
-        for v in FOOD_DB.values():
+        for v in FALLBACK_FOODS.values():
             if category_code and v.get("category") != category_code: continue
             if term and term not in v["name"].lower(): continue
             foods.append(v)
@@ -207,7 +225,10 @@ try:
     from core.nutrition import NutritionService
     from core.gamification import GamificationSystem
     from core.payment import PaymentService
-except Exception:
+    logger.info("✅ Serviços core carregados")
+except Exception as e:
+    logger.warning(f"Serviços core não encontrados, usando fallbacks: {e}")
+    
     class NutritionService:
         def __init__(self, db): self.db = db
         def calculate_tmb(self, w, h, a, g="male"):
@@ -239,13 +260,14 @@ except Exception:
             df['meal_date'] = pd.to_datetime(df['meal_date'])
             return df.groupby(df['meal_date'].dt.date).agg(calories=('calories', 'sum')).reset_index().rename(columns={'meal_date': 'date'})
         def register_food(self, food_id, quantity, meal_time=None):
-            # Tenta achar no banco local se o ID for string do fallback
-            food = FOOD_DB.get(food_id) if isinstance(food_id, str) else None
+            # Tenta buscar no fallback local
+            food = FALLBACK_FOODS.get(food_id) if isinstance(food_id, str) else None
             if not food and isinstance(food_id, dict):
                 food = food_id
-            if not food: return False, None, 0
+            if not food: 
+                logger.error(f"Alimento não encontrado: {food_id}")
+                return False, None, 0
             if not meal_time: meal_time = datetime.now().strftime("%H:%M")
-            
             meal_data = {
                 "food": food["name"], "food_id": food.get("id", food_id),
                 "quantity": float(quantity),
@@ -258,6 +280,7 @@ except Exception:
             }
             self.db.save_meal(meal_data)
             return True, food["name"], food["calories"]
+    
     class GamificationSystem:
         def __init__(self, db): self.db = db
         def calculate_streak(self):
@@ -273,24 +296,29 @@ except Exception:
                 if diff == 1: streak += 1
                 else: break
             return streak
+    
     class PaymentService:
         PLANS = {"free": {"name": "Gratuito"}, "pro": {"name": "Pro", "price": 29.90}}
         def __init__(self): pass
         def create_checkout_link(self, plan, email): return "#"
 
 # ============================================================
-# 7. INICIALIZAÇÃO
+# 7. INICIALIZAÇÃO DE SERVIÇOS
 # ============================================================
 @st.cache_resource(show_spinner=False)
 def init_services():
     try:
         db = AppDatabase()
+        
+        # Tenta conectar ao Supabase para o FoodService
         supabase_client = None
         try:
             if "SUPABASE_URL" in st.secrets and "SUPABASE_KEY" in st.secrets:
                 from supabase import create_client
                 supabase_client = create_client(st.secrets["SUPABASE_URL"], st.secrets["SUPABASE_KEY"])
-        except Exception: pass
+                logger.info("✅ Supabase conectado para FoodService")
+        except Exception as e:
+            logger.warning(f"Supabase indisponível para FoodService: {e}")
         
         return {
             "db": db,
@@ -300,7 +328,7 @@ def init_services():
             "foods": FoodService(supabase_client)
         }
     except Exception as e:
-        logger.critical(f"Falha fatal: {e}")
+        logger.critical(f"Falha fatal na inicialização: {e}")
         return None
 
 # ============================================================
@@ -332,7 +360,7 @@ def empty_state(icon, mensagem, dica=""):
     """, unsafe_allow_html=True)
 
 # ============================================================
-# 9. VIEWS
+# 9. VIEWS - LOGIN
 # ============================================================
 def render_login(db):
     st.markdown('<div class="fade-in">', unsafe_allow_html=True)
@@ -343,7 +371,7 @@ def render_login(db):
     </div>
     """, unsafe_allow_html=True)
     
-    tab1, tab2 = st.tabs(["🔑 Acessar Conta", "📝 Criar Conta"])
+    tab1, tab2 = st.tabs(["🔑 Acessar Conta", " Criar Conta"])
     with tab1:
         email = st.text_input("Email", key="login_email")
         password = st.text_input("Senha", type="password", key="login_pass")
@@ -373,24 +401,27 @@ def render_login(db):
                 else: st.error("Email já cadastrado.")
     st.markdown('</div>', unsafe_allow_html=True)
 
+# ============================================================
+# 10. VIEWS - SIDEBAR
+# ============================================================
 def render_sidebar(services):
     user = st.session_state.user
     with st.sidebar:
         st.markdown('<h2 style="text-align:center;color:#06b6d4;">💪 EmagreSim</h2>', unsafe_allow_html=True)
         plan = user.get("plan", "free")
         st.markdown(f'<div style="background:#334155; color:#94a3b8; padding:0.5rem; border-radius:8px; text-align:center; font-weight:600; margin-bottom:1rem;">👑 {plan.upper()}</div>', unsafe_allow_html=True)
-        st.markdown(f"** {user.get('name')}**\n📧 {user.get('email')}")
+        st.markdown(f"**👤 {user.get('name')}**\n📧 {user.get('email')}")
         
         summary = services["nutrition"].get_daily_summary()
         streak = services["gamification"].calculate_streak()
         
         st.markdown("---\n**📊 Resumo de Hoje**")
-        st.metric("🔥 Calorias", f"{summary.get('calories', 0)} kcal")
-        st.metric("🍽️ Refeições", summary.get('count', 0))
+        st.metric(" Calorias", f"{summary.get('calories', 0)} kcal")
+        st.metric("️ Refeições", summary.get('count', 0))
         st.metric("🔥 Sequência", f"{streak} dias")
         
         st.markdown("---\n**🧭 Navegação**")
-        pages = [("🏠 Início", "home"), (" Dashboard", "dashboard"), ("🍴 Registro", "meals"), ("⚖️ Peso", "weight"), ("📈 Análise", "analysis"), ("👤 Perfil", "profile")]
+        pages = [("🏠 Início", "home"), ("📊 Dashboard", "dashboard"), ("🍴 Registro", "meals"), ("⚖️ Peso", "weight"), (" Análise", "analysis"), (" Perfil", "profile")]
         for label, key in pages:
             if st.button(label, use_container_width=True, type="primary" if st.session_state.page == key else "secondary"):
                 st.session_state.page = key
@@ -400,6 +431,9 @@ def render_sidebar(services):
             st.session_state.user = None
             st.rerun()
 
+# ============================================================
+# 11. VIEWS - HOME
+# ============================================================
 def render_home(services, user):
     st.markdown('<div class="fade-in">', unsafe_allow_html=True)
     hour = datetime.now().hour
@@ -433,16 +467,19 @@ def render_home(services, user):
     
     c1, c2, c3 = st.columns(3)
     with c1:
-        if st.button("🍴 Registrar Refeição", use_container_width=True, type="primary"):
+        if st.button(" Registrar Refeição", use_container_width=True, type="primary"):
             st.session_state.page = "meals"; st.rerun()
     with c2:
-        if st.button("️ Registrar Peso", use_container_width=True):
+        if st.button("⚖️ Registrar Peso", use_container_width=True):
             st.session_state.page = "weight"; st.rerun()
     with c3:
         if st.button("📊 Dashboard", use_container_width=True):
             st.session_state.page = "dashboard"; st.rerun()
     st.markdown('</div>', unsafe_allow_html=True)
 
+# ============================================================
+# 12. VIEWS - DASHBOARD
+# ============================================================
 def render_dashboard(services, user):
     st.title("📊 Dashboard Completo")
     summary = services["nutrition"].get_daily_summary()
@@ -453,7 +490,7 @@ def render_dashboard(services, user):
     with c2: card_metric(f"{summary.get('protein', 0):.1f}g", "Proteínas", "", "#10b981")
     with c3: card_metric(f"{streak} dias", "Sequência", "🔥", "#f59e0b")
     
-    st.subheader("📈 Últimos 7 Dias")
+    st.subheader(" Últimos 7 Dias")
     weekly = services["nutrition"].get_weekly_summary()
     if not weekly.empty:
         try:
@@ -461,7 +498,7 @@ def render_dashboard(services, user):
             fig = px.line(weekly, x='date', y='calories', markers=True, template="plotly_white")
             st.plotly_chart(fig, use_container_width=True)
         except: st.write(weekly)
-    else: empty_state("", "Sem dados", "Registre refeições por 2 dias.")
+    else: empty_state("📊", "Sem dados", "Registre refeições por 2 dias.")
     
     st.subheader("🥗 Macronutrientes do Dia")
     m1, m2, m3, m4 = st.columns(4)
@@ -470,15 +507,21 @@ def render_dashboard(services, user):
     with m3: st.metric("Gorduras", f"{summary.get('fat', 0):.1f}g")
     with m4: st.metric("Fibras", f"{summary.get('fiber', 0):.1f}g")
 
-# =====================================================================
-# 10. RENDER MEALS (A TELA MELHORADA QUE VOCÊ PEDIU)
-# =====================================================================
+# ============================================================
+# 13. VIEWS - REGISTRO DE REFEIÇÕES (OTIMIZADO)
+# ============================================================
 def render_meals(services, user):
-    """Tela de registro alimentar otimizada e motivacional."""
+    """Tela de registro alimentar - busca do Supabase."""
     st.title("️ Registro Alimentar")
     st.markdown(f"**{user.get('name', 'Usuário')}** • {date.today().strftime('%d/%m/%Y')}")
     
-    # 1. TIPO DE REFEIÇÃO (Detecção automática de período)
+    # Indicador de fonte de dados
+    if services["foods"].use_supabase:
+        st.caption("📡 Conectado ao banco de alimentos (200+ itens)")
+    else:
+        st.caption("️ Modo offline - apenas alimentos básicos disponíveis")
+    
+    # 1. TIPO DE REFEIÇÃO
     hora_atual = datetime.now().hour
     if 5 <= hora_atual < 10: periodo_idx = 0
     elif 10 <= hora_atual < 14: periodo_idx = 1
@@ -486,7 +529,6 @@ def render_meals(services, user):
     elif 18 <= hora_atual < 21: periodo_idx = 3
     else: periodo_idx = 4
     
-    # Categorias fixas para garantir que Almoço e Jantar apareçam
     opcoes_refeicao = ["Café da Manhã", "Almoço", "Lanche da Tarde", "Jantar", "Ceia"]
     mapeamento_categoria = {
         "Café da Manhã": "cafe_manha",
@@ -496,21 +538,13 @@ def render_meals(services, user):
         "Ceia": "ceia"
     }
     
-    tipo_refeicao = st.selectbox(
-        "🍽️ Qual refeição?",
-        options=opcoes_refeicao,
-        index=periodo_idx
-    )
+    tipo_refeicao = st.selectbox("🍽️ Qual refeição?", options=opcoes_refeicao, index=periodo_idx)
     categoria = mapeamento_categoria[tipo_refeicao]
     
-    # 2. HORÁRIO (Obrigatório e automático)
+    # 2. HORÁRIO
     col1, col2 = st.columns([3, 2])
     with col1:
-        hora_registro = st.time_input(
-            "⏰ Horário da refeição", 
-            value=datetime.now().time(),
-            help="O sistema marcará exatamente o horário para suas análises futuras."
-        )
+        hora_registro = st.time_input("⏰ Horário da refeição", value=datetime.now().time())
     with col2:
         hora_int = int(hora_registro.strftime("%H"))
         periodo_dia = "Manhã" if hora_int < 12 else "Tarde" if hora_int < 18 else "Noite"
@@ -520,42 +554,31 @@ def render_meals(services, user):
     st.markdown("---")
     st.subheader("🥗 O que você comeu?")
     
-    # Campo de texto que filtra a lista abaixo
-    termo = st.text_input(
-        "🔍 Digite o nome do alimento...", 
-        placeholder="Ex: arroz, frango, banana...",
-        help="Comece a digitar para filtrar a lista abaixo"
-    )
-    
-    # Busca os alimentos do banco (Supabase ou Local)
-    if termo:
-        alimentos = services["foods"].search_foods(termo, categoria)
-    else:
-        alimentos = services["foods"].get_foods_by_category(categoria)
+    # Busca do Supabase (ou fallback)
+    alimentos = services["foods"].get_foods_by_category(categoria)
     
     if not alimentos:
         st.warning("⚠️ Nenhum alimento encontrado nesta categoria.")
-        st.info(" Dica: Tente buscar por outra categoria ou adicione um alimento personalizado.")
+        if not services["foods"].use_supabase:
+            st.info("💡 Conecte o Supabase para acessar 200+ alimentos brasileiros.")
         return
     
-    # Prepara opções para o Selectbox
-    # ATENÇÃO: Sem mostrar calorias aqui, conforme solicitado!
+    # Prepara opções (SEM mostrar calorias)
     opcoes_display = {}
     for food in alimentos:
-        # Compatibilidade entre Supabase dict e Local dict
         food_name = food.get("name", "")
         portion = food.get("portion_size", food.get("portion", "100g"))
         label = f"{food_name} • {portion}"
         opcoes_display[label] = food
     
-    # Ordena alfabeticamente
     opcoes_ordenadas = sorted(list(opcoes_display.keys()))
     
+    # Dropdown com busca nativa do Streamlit
     alimento_selecionado = st.selectbox(
-        "Selecione o alimento na lista",
+        "Digite o nome do alimento...",
         options=opcoes_ordenadas,
-        placeholder="Digite no campo acima para filtrar...",
-        index=0 if opcoes_ordenadas else None
+        placeholder="Comece a digitar para buscar...",
+        index=None
     )
     
     if alimento_selecionado:
@@ -568,20 +591,9 @@ def render_meals(services, user):
         # 4. QUANTIDADE E MEIA PORÇÃO
         col1, col2 = st.columns([2, 2])
         with col1:
-            qtd = st.number_input(
-                "Quantidade (em porções)",
-                min_value=0.1,
-                max_value=10.0,
-                value=1.0,
-                step=0.1,
-                help="Quantas vezes a porção padrão você consumiu?"
-            )
+            qtd = st.number_input("Quantidade (em porções)", min_value=0.1, max_value=10.0, value=1.0, step=0.1)
         with col2:
-            meia_porcao = st.checkbox(
-                "🔄 Marcar como Meia Porção (÷2)",
-                value=False,
-                help="Ideal para lanches rápidos ou porções pequenas"
-            )
+            meia_porcao = st.checkbox("🔄 Marcar como Meia Porção (÷2)", value=False)
         
         qtd_final = qtd * 0.5 if meia_porcao else qtd
         if meia_porcao:
@@ -590,23 +602,15 @@ def render_meals(services, user):
         # 5. BOTÃO DE REGISTRO
         st.markdown("---")
         if st.button("✅ Confirmar e Salvar Refeição", type="primary", use_container_width=True):
-            ok, nome, cal_unit = services["nutrition"].register_food(
-                food_key, 
-                qtd_final, 
-                hora_registro.strftime("%H:%M")
-            )
-            
+            ok, nome, cal_unit = services["nutrition"].register_food(food_key, qtd_final, hora_registro.strftime("%H:%M"))
             if ok:
-                # Busca o total atualizado
                 summary = services["nutrition"].get_daily_summary()
-                
                 st.success(f"✅ **{nome}** registrado com sucesso!")
-                # Mostra APENAS o total do dia, não as calorias do item
-                st.info(f" Seu total calórico do dia agora é: **{summary['calories']} kcal**")
+                st.info(f"🔥 Seu total calórico do dia agora é: **{summary['calories']} kcal**")
                 st.balloons()
                 st.rerun()
             else:
-                st.error("❌ Erro ao registrar a refeição.")
+                st.error("❌ Erro ao registrar a refeição. Verifique se o alimento existe no banco.")
         
         # 6. RESUMO DO DIA
         st.markdown("---")
@@ -614,15 +618,16 @@ def render_meals(services, user):
         summary = services["nutrition"].get_daily_summary()
         
         if summary.get('meals'):
-            # Mostra apenas o total geral
             st.metric("🔥 Total calórico acumulado hoje", f"{summary['calories']} kcal")
-            
             st.markdown("**Histórico do dia:**")
             for m in summary['meals']:
                 st.markdown(f"• **{m.get('meal_time', '--:--')}** - {m.get('food', '?')}")
         else:
-            empty_state("🍽️", "Nenhuma refeição registrada hoje", "Que tal começar agora? É rápido e fácil!")
+            empty_state("🍽️", "Nenhuma refeição registrada hoje", "Que tal começar agora?")
 
+# ============================================================
+# 14. VIEWS - PESO
+# ============================================================
 def render_weight(services, user):
     st.title("⚖️ Evolução de Peso")
     c1, c2 = st.columns([1, 2])
@@ -653,11 +658,14 @@ def render_weight(services, user):
             with c3: st.metric("Variação", f"{df.iloc[-1]['weight'] - df.iloc[0]['weight']:+.1f} kg", delta_color="inverse")
         else: empty_state("⚖️", "Sem pesagens", "Faça seu primeiro registro ao lado.")
 
+# ============================================================
+# 15. VIEWS - ANÁLISE
+# ============================================================
 def render_analysis(services, user):
-    st.title("📈 Análise e Desafios")
+    st.title(" Análise e Desafios")
     achs = services["db"].get_achievements()
     if achs:
-        st.subheader("🏆 Conquistas")
+        st.subheader(" Conquistas")
         cols = st.columns(min(3, len(achs)))
         for i, a in enumerate(achs):
             with cols[i % 3]:
@@ -674,8 +682,11 @@ def render_analysis(services, user):
     st.subheader("🎯 Desafios da Semana")
     desafios = [{"t": "7 Refeições Registradas", "xp": 50}, {"t": "Meta Calórica Atingida", "xp": 120}, {"t": "Hidratação Total", "xp": 60}]
     for d in desafios:
-        st.markdown(f"<div style='background: #f0f9ff; border-left: 4px solid #0891b2; padding: 1rem; margin-bottom: 0.5rem; border-radius: 4px;'><b>🎯 {d['t']}</b> <span style='float:right; color: #f59e0b; font-weight:bold;'>+{d['xp']} XP</span></div>", unsafe_allow_html=True)
+        st.markdown(f"<div style='background: #f0f9ff; border-left: 4px solid #0891b2; padding: 1rem; margin-bottom: 0.5rem; border-radius: 4px;'><b> {d['t']}</b> <span style='float:right; color: #f59e0b; font-weight:bold;'>+{d['xp']} XP</span></div>", unsafe_allow_html=True)
 
+# ============================================================
+# 16. VIEWS - PERFIL
+# ============================================================
 def render_profile(services, user):
     st.title("👤 Perfil")
     with st.form("perfil_form"):
@@ -714,7 +725,7 @@ def render_profile(services, user):
                 user["plan"] = "lifetime"; st.session_state.user = user; services["db"].update_profile({"plan": "lifetime"}); st.success("Plano Vitalício ativado!"); st.rerun()
 
 # ============================================================
-# 11. MAIN
+# 17. MAIN
 # ============================================================
 def main():
     load_css()
