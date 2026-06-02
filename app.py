@@ -5,13 +5,10 @@ from core.nutrition import NutritionService
 from core.analytics import AnalyticsService
 from core.gamification import GamificationSystem
 from core.payments import PaymentService
-from pages.Dashboard import render_dashboard
-from pages.Registro_Refeições import render_meals
-from pages.Evolução_Peso import render_weight
-from pages.Análise_Estátistica import render_stats
-from pages.Perfil import render_profile
 
-# Configuração global
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
+
 st.set_page_config(
     page_title="EmagreSim",
     page_icon="💪",
@@ -19,16 +16,19 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
-# Inicialização do estado
+def load_css():
+    try:
+        with open("assets/style.css") as f:
+            st.markdown(f"<style>{f.read()}</style>", unsafe_allow_html=True)
+    except:
+        pass
+
 def init_session_state():
     if "user" not in st.session_state:
         st.session_state.user = None
-    if "current_page" not in st.session_state:
-        st.session_state.current_page = "dashboard"
 
 init_session_state()
 
-# Carregamento dos serviços
 @st.cache_resource
 def init_services():
     try:
@@ -41,61 +41,79 @@ def init_services():
             "payment": PaymentService()
         }
     except Exception as e:
-        logger.error(f"Erro na inicialização dos serviços: {e}")
+        logger.error(f"Erro na inicialização: {e}")
         return None
 
-# Renderização da sidebar
-def render_sidebar(user):
-    with st.sidebar:
-        st.markdown('<h2 style="text-align:center;color:#0891b2;margin-bottom:0.5rem;">💪 EmagreSim</h2>', unsafe_allow_html=True)
-        plan_badge = "👑 PRO" if user.get("plan") != "free" else "🎁 GRATUITO"
-        st.markdown(f'<div style="text-align:center;margin-bottom:1.5rem;"><span style="background:#0891b2;color:white;padding:0.3rem 0.8rem;border-radius:20px;font-size:0.75rem;font-weight:bold;">{plan_badge}</span></div>', unsafe_allow_html=True)
-        
-        pages = [
-            ("📊 Dashboard", "dashboard"), 
-            ("🍴 Registro Alimentar", "meals"), 
-            ("⚖️ Evolução de Peso", "weight"), 
-            ("📈 Análise Estatística", "stats"), 
-            ("👤 Perfil", "profile")
-        ]
-        
-        for label, page_key in pages:
-            if st.button(label, use_container_width=True, type="primary" if st.session_state.current_page == page_key else "secondary"):
-                st.session_state.current_page = page_key
-                st.rerun()
-                
-        st.markdown("---")
-        st.button("🚪 Sair do Sistema", use_container_width=True, on_click=lambda: st.session_state.update({"user": None, "current_page": "dashboard"}))
-
-# Main
 def main():
+    load_css()
     services = init_services()
     if not services:
-        st.error("Falha ao inicializar o ecossistema interno.")
+        st.error("Falha ao inicializar serviços.")
         st.stop()
-        
+    
     user = st.session_state.user
+    
+    # Tela de Login (se não logado)
     if user is None:
-        st.switch_page("pages/Dashboard.py")
+        st.markdown('<div class="fade-in">', unsafe_allow_html=True)
+        st.markdown('<div style="text-align:center;margin-top:2rem;"><h1 style="font-size:2.5rem;color:#0891b2;">💪 EmagreSim</h1><p style="color:#64748b;">Monitoramento de saúde baseado em dados</p></div>', unsafe_allow_html=True)
+        
+        tab1, tab2 = st.tabs(["Acessar Conta", "Criar Conta"])
+        
+        with tab1:
+            email = st.text_input("Email", key="login_email")
+            password = st.text_input("Senha", type="password", key="login_pass")
+            if st.button("Entrar", use_container_width=True, type="primary"):
+                user_data = services["db"].get_user(email, password)
+                if user_data:
+                    st.session_state.user = user_data
+                    st.rerun()
+                else:
+                    st.error("Credenciais incorretas.")
+            
+            st.markdown('<div style="text-align:center;margin:1rem 0;color:#64748b;">ou</div>', unsafe_allow_html=True)
+            if st.button("Modo Demonstração", use_container_width=True):
+                st.session_state.user = services["db"].get_user("demo@emagresim.com", "demo")
+                st.rerun()
+        
+        with tab2:
+            new_email = st.text_input("Email", key="reg_email")
+            new_name = st.text_input("Nome", key="reg_name")
+            new_password = st.text_input("Senha", type="password", key="reg_pass")
+            if st.button("Cadastrar", use_container_width=True, type="primary"):
+                if services["db"].create_user(new_email, new_password, new_name):
+                    st.success("Conta criada! Faça login.")
+                else:
+                    st.error("Email já cadastrado.")
+        
+        st.markdown('</div>', unsafe_allow_html=True)
         return
     
-    if not user.get("current_weight") or not user.get("height"):
-        st.switch_page("pages/Perfil.py")
-        return
-
-    render_sidebar(user)
-    current_page = st.session_state.current_page
+    # Usuário logado - mostra dashboard básico e navegação
+    st.markdown('<div class="fade-in">', unsafe_allow_html=True)
+    st.markdown(f'<h1 style="color:#0891b2;">Bem-vindo(a), {user.get("name", "Usuário")}!</h1>', unsafe_allow_html=True)
+    st.markdown('<p style="color:#64748b;">Use o menu lateral para navegar entre as funcionalidades.</p>', unsafe_allow_html=True)
     
-    if current_page == "dashboard": 
-        render_dashboard(services["nutrition"], services["gamification"], user)
-    elif current_page == "meals": 
-        render_meals(services["nutrition"], user)
-    elif current_page == "weight": 
-        render_weight(services["nutrition"], user)
-    elif current_page == "stats": 
-        render_stats(services["nutrition"], services["analytics"])
-    elif current_page == "profile": 
-        render_profile(services["payment"], user)
+    # Cards de resumo rápido
+    today_summary = services["nutrition"].get_daily_summary()
+    streak = services["gamification"].calculate_streak()
+    
+    col1, col2, col3 = st.columns(3)
+    with col1:
+        st.markdown(f'<div class="data-card"><div class="data-value">{today_summary["calories"]}</div><div class="data-label">Calorias Hoje</div></div>', unsafe_allow_html=True)
+    with col2:
+        st.markdown(f'<div class="data-card"><div class="data-value">{streak}</div><div class="data-label">Dias Seguidos</div></div>', unsafe_allow_html=True)
+    with col3:
+        st.markdown(f'<div class="data-card"><div class="data-value">{user.get("current_weight", "--")}</div><div class="data-label">Peso Atual</div></div>', unsafe_allow_html=True)
+    
+    st.markdown("---")
+    st.info("👈 Use o menu lateral para acessar todas as funcionalidades!")
+    
+    if st.button("🚪 Sair", use_container_width=True):
+        st.session_state.user = None
+        st.rerun()
+    
+    st.markdown('</div>', unsafe_allow_html=True)
 
 if __name__ == "__main__":
     main()
