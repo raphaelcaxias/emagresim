@@ -1,47 +1,44 @@
-# EmagreSim ⚔️
+# 💪 EmagreSim - Sistema de Monitoramento Nutricional
 
-Um aplicativo web gamificado para ajudar no emagrecimento saudável, transformando a jornada em um RPG.
+![Versão](https://img.shields.io/badge/versão-2.0.0-blue)
+![Python](https://img.shields.io/badge/python-3.11+-green)
+![Streamlit](https://img.shields.io/badge/streamlit-1.35.0-red)
+![Licença](https://img.shields.io/badge/licença-MIT-yellow)
 
-##  Funcionalidades
+Sistema inteligente de monitoramento nutricional e controle de peso, desenvolvido para o público brasileiro com base em dados científicos e gamificação comportamental.
 
-*   **Sistema de Login/Registro**: Autenticação segura com senhas hasheadas.
-*   **Gamificação RPG**: Ganhe XP por registrar refeições saudáveis e suba de nível.
-*   **Rastreamento**: Registre peso, calorias e macros.
-*   **Dashboard**: Visualize métricas, streaks (dias consecutivos) e motivação diária.
-*   **Histórico**: Gráficos de evolução de peso.
+## 🚀 Features
 
-## 🛠️ Tecnologias
+### ✅ Core
+- **Registro Alimentar Inteligente**: Busca por texto, filtros por período, 200+ alimentos brasileiros
+- **Controle Calórico Automatizado**: Cálculo de TMB/TDEE baseado em Mifflin-St Jeor
+- **Macronutrientes Detalhados**: Proteínas, carboidratos, gorduras e fibras
+- **Evolução de Peso**: Gráficos interativos e análise de tendências
+- **Gamificação**: Sistema de XP, níveis e conquistas
 
-*   Python 3.9+
-*   Streamlit (Frontend)
-*   SQLite (Banco de Dados)
-*   Pandas (Análise de dados)
+### 📊 Análises Avançadas
+- Padrões de consumo por período do dia
+- Velocidade de perda/ganho de peso
+- Consistência de registro
+- Desafios semanais personalizados
 
-## 📦 Instalação e Uso
+### 🔧 Técnico
+- **Arquitetura Modular**: Separação clara de responsabilidades
+- **Supabase Integration**: Banco de dados real com RLS
+- **Modo Mock**: Funciona 100% offline para desenvolvimento
+- **Logging Estruturado**: Diagnóstico preciso de erros
+- **Type Hints**: Código documentado e tipado
 
-1.  Clone o repositório:
-    ```bash
-    git clone https://github.com/seu-usuario/emagresim.git
-    cd emagresim
-    ```
+## ️ Instalação
 
-2.  Instale as dependências:
-    ```bash
-    pip install -r requirements.txt
-    ```
+### Pré-requisitos
+- Python 3.11+
+- Conta no Supabase (opcional, para produção)
+- Conta no Streamlit Cloud (para deploy)
 
-3.  Rode a aplicação:
-    ```bash
-    streamlit run app.py
-    ```
+### Passo a Passo
 
-## ️ Deploy no Streamlit Cloud
-
-1.  Faça upload deste repositório para o GitHub.
-2.  Acesse [share.streamlit.io](https://share.streamlit.io).
-3.  Conecte seu repositório e selecione o arquivo `app.py`.
-4.  O app será deployado automaticamente!
-
-##  Licença
-
-Projeto Open Source para fins educacionais.
+1. **Clone o repositório**:
+```bash
+git clone https://github.com/seu-usuario/emagresim.git
+cd emagresim
